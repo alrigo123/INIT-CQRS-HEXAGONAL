@@ -25,3 +25,16 @@ Consumidor de RabbitMQ: Necesitas un script o proceso para ejecutar el consumido
 
 Para tu entrega final, considera seriamente agregar un segundo servicio worker en docker-compose.yml que ejecute automáticamente el consumidor. Esto hará que tu solución sea mucho más profesional y fácil de probar, demostrando que has pensado en la totalidad del sistema.
 
+
+
+¿Por qué sucede esto?
+Esto es muy común en entornos Docker. Cuando levantas todo el entorno con docker compose up, todos los servicios (PostgreSQL, RabbitMQ, backend, worker) se inician al mismo tiempo. Aunque depends_on hace que el worker espere a que db y rabbitmq estén listos, el orden exacto de inicio y la velocidad de inicialización pueden variar.
+
+En muchos casos, aunque rabbitmq está marcado como Up, su interfaz de red interna puede no estar completamente lista para aceptar conexiones desde otros contenedores en el momento exacto en que el worker intenta conectarse. Por eso, el worker falla en los primeros intentos.
+
+¿Es bueno que llegue a 4?
+Sí, es muy bueno que el worker tenga esta lógica de reintentos. Es una práctica de ingeniería robusta:
+
+Resiliencia: Evita que el worker falle permanentemente por un problema temporal de red o concurrencia.
+Automatización: No requiere intervención manual para reiniciar el worker si hay un problema transitorio.
+Práctica recomendada: Muchas aplicaciones en producción usan estrategias similares para manejar fallos de conexión a servicios externos.
