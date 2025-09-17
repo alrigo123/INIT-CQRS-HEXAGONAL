@@ -1,0 +1,18 @@
+docker-compose exec db bash
+
+psql -U myapp_user -d myapp_db
+
+-- Listar todas las tablas
+\dt
+
+-- Seleccionar todos los usuarios
+SELECT * FROM users;
+
+-- Seleccionar todos los tokens
+SELECT * FROM tokens;
+
+-- Salir de psql
+\q
+
+-- Salir del contenedor (bash)
+exit

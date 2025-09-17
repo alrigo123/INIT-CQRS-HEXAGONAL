@@ -1,5 +1,3 @@
-
-
 version: '3.8'
 
 services:
@@ -80,6 +78,27 @@ services:
       - rabbitmq
     # networks:
     #   - app-network
+
+  # --- NUEVO SERVICIO AÑADIDO ---
+  # Servicio del Worker de Auth (Consumidor de Comandos de RabbitMQ para auth)
+  auth-worker:
+    # Construye la misma imagen que 'backend'
+    build: .
+    # Comando para ejecutar el script del consumidor de RabbitMQ de auth
+    command: python -m app.auth.infrastructure.messaging.start_consumer
+    volumes:
+      # Monta el código fuente
+      - .:/app
+    environment:
+      # El worker también necesita conectarse a la BD y RabbitMQ
+      DATABASE_URL: postgresql://myapp_user:myapp_password@db:5432/myapp_db
+      RABBITMQ_URL: amqp://myapp_user:myapp_password@rabbitmq:5672/
+    depends_on:
+      - db
+      - rabbitmq
+    # networks:
+    #   - app-network
+  # --- FIN DEL NUEVO SERVICIO ---
 
 # Define volúmenes con nombre para persistir datos
 volumes:

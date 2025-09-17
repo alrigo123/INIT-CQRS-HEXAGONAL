@@ -1,0 +1,6 @@
+Para mantenerlo simple y alineado con lo que ya hemos hecho, vamos a implementar:
+
+Comando: Registrar un nuevo usuario (RegisterUserCommand). Esto reutilizará mucho del trabajo de CreateUserCommand de users, pero lo haremos en el contexto auth.
+Consulta: Validar un token de acceso (ValidateTokenQuery). Esto representará una operación de solo lectura.
+
+

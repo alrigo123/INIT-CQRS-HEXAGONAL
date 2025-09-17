@@ -19,3 +19,8 @@ Cumple con el Requisito de Docker: El PDF exige un Dockerfile y un docker-compos
 
 
 En resumen: docker-compose up no solo ejecuta tu aplicación, sino que crea todo el ecosistema necesario para que funcione según la arquitectura solicitada (FastAPI, RabbitMQ, BD) de forma aislada, reproducible y fácil de gestionar. Es la herramienta que une todas las partes del entorno definido en tus archivos de configuración Docker.
+
+
+
+docker compose logs -f auth-worker
+docker compose logs -f worker

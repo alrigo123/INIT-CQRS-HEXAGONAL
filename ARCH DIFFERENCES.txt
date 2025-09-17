@@ -1,0 +1,107 @@
+USERS
+
+# app/users/application/commands/
+# - UpdateUserProfileCommand: Actualizar información como dirección, teléfono, avatar.
+# - ChangeUserEmailCommand: Proceso seguro para cambiar el email (requiere verificación).
+# - DeactivateUserCommand: Desactivar una cuenta de usuario.
+# - RequestUserDataExportCommand: Iniciar proceso de exportación de datos del usuario (GDPR).
+
+# app/users/application/events/
+# - UserCreatedEvent: Publicado cuando un usuario se crea exitosamente (puede ser escuchado por `auth` para acciones post-creación).
+# - UserDeactivatedEvent: Notifica que un usuario ha sido desactivado.
+# - UserEmailChangedEvent: Notifica el cambio de email principal.
+
+# app/users/application/queries/
+# - GetUserProfileQuery: Obtener datos detallados del perfil del usuario.
+# - ListUsersQuery: Obtener una lista paginada de usuarios (para admins).
+# - SearchUsersQuery: Buscar usuarios por nombre, email, etc.
+
+# app/users/domain/models/
+# - UserProfile (o extender User): Información adicional como biografía, ubicación, preferencias.
+# - UserPreferences: Configuraciones del usuario (idioma, notificaciones).
+
+# app/users/domain/services/
+# - UserEmailVerificationService: Lógica para generar y validar tokens de verificación de email.
+# - UserDataAnonymizationService: Lógica para anonimizar datos de usuarios eliminados.
+
+# app/auth/infrastructure/api/v1/schemas.py (ejemplo de schema para datos de users)
+# class UserProfileResponse(BaseModel):
+#     id: str
+#     name: str
+#     email: str
+#     bio: Optional[str]
+#     location: Optional[str]
+#     created_at: datetime
+
+
+auth
+
+# app/auth/application/commands/
+# - LoginCommand: Autenticar usuario y generar tokens.
+# - LogoutCommand: Invalidar un token de acceso específico.
+# - RefreshTokenCommand: Generar un nuevo access_token usando un refresh_token.
+# - ChangePasswordCommand: Cambiar la contraseña del usuario (requiere autenticación previa).
+# - RequestPasswordResetCommand: Iniciar proceso de recuperación de contraseña.
+# - ResetPasswordCommand: Establecer una nueva contraseña usando un token de recuperación.
+# - EnableTwoFactorAuthCommand: Activar 2FA para un usuario.
+# - VerifyTwoFactorCodeCommand: Verificar un código 2FA.
+
+# app/auth/application/events/
+# - UserLoggedInEvent: Publicado después de un login exitoso.
+# - UserLoggedOutEvent: Publicado cuando un usuario cierra sesión.
+# - PasswordChangedEvent: Notifica que la contraseña de un usuario ha cambiado.
+# - TwoFactorEnabledEvent: Notifica que 2FA ha sido activado.
+
+# app/auth/application/queries/
+# - ValidateTokenQuery: Verificar si un token es válido y obtener datos del usuario asociado.
+# - GetUserPermissionsQuery: Obtener los permisos/roles específicos de un usuario.
+# - CheckPermissionQuery: Verificar si un usuario tiene un permiso específico para una acción.
+
+# app/auth/domain/models/
+# - RefreshToken: Modelo para tokens de refresco, con su propia expiración y lógica de seguridad.
+# - PasswordResetToken: Modelo para tokens temporales de recuperación de contraseña.
+# - TwoFactorSecret: Modelo para almacenar el secreto 2FA asociado a un usuario.
+# - Permission / Role: Modelos para gestionar permisos y roles de usuarios (ACL).
+
+# app/auth/domain/services/
+# - PasswordHashingService: Servicio centralizado para hashear y verificar contraseñas.
+# - TokenGenerationService: Servicio para generar y validar JWTs, API Keys, etc.
+# - TwoFactorAuthenticationService: Lógica para generar y verificar códigos 2FA (TOTP).
+
+# app/auth/infrastructure/api/v1/schemas.py (ejemplo de schemas adicionales)
+# class LoginRequest(BaseModel):
+#     email: EmailStr
+#     password: str
+#     otp_code: Optional[str] # Para 2FA
+
+# class RefreshTokenRequest(BaseModel):
+#     refresh_token: str
+
+# class ChangePasswordRequest(BaseModel):
+#     current_password: str
+#     new_password: str
+
+# class ValidateTokenResponse(BaseModel):
+#     is_valid: bool
+#     user_id: Optional[str]
+#     permissions: List[str] # Permisos asociados al token/usuario
+#     expires_at: Optional[datetime]
+
+
+
+CONTEXTOS COMUNICACION
+# Ejemplo de flujo con eventos:
+# 1. auth: Recibe LoginCommand.
+# 2. auth: Handler valida credenciales.
+# 3. auth: Handler genera access_token y refresh_token.
+# 4. auth: Handler publica UserLoggedInEvent.
+# 5. users (listener): Recibe UserLoggedInEvent.
+# 6. users: Actualiza last_login_time del usuario.
+
+# app/users/infrastructure/messaging/event_handlers.py
+# def handle_user_logged_in(event_data: dict):
+#     user_id = event_data['user_id']
+#     # Actualizar last_login en el repositorio de users
+#     user_repo.update_last_login(user_id, datetime.utcnow())
+
+

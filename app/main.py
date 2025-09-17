@@ -5,6 +5,10 @@ from .users.infrastructure.api.v1.routes import router as users_router
 # Importamos la función para crear tablas de la BD
 from .users.infrastructure.persistence.database import create_tables
 
+
+# Importamos el router de auth v1
+from .auth.infrastructure.api.v1.routes import router as auth_router
+
 # --- Creación de la instancia de la aplicación ---
 app = FastAPI(
     title="Backend Hexagonal CQRS API",
@@ -43,6 +47,8 @@ async def startup_event():
 # Esto significa que los endpoints definidos en users_router
 # estarán disponibles en /api/v1/users/...
 app.include_router(users_router, prefix="/api/v1")
+# Incluimos el router de auth v1
+app.include_router(auth_router, prefix="/api/v1")
 
 # --- Rutas de prueba o health check (opcional) ---
 
