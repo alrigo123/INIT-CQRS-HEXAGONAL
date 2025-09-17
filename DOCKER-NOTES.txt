@@ -1,0 +1,21 @@
+docker-compose up  (PARA LEVENTAR EL DOCKERFILE Y EL COMPOSE) -d (PARA QUE SE LEVANTE EN SEGUNDO PLANO)
+
+docker-compose down (PARA DETENERLO)
+
+docker compose up --build (PARA RECONSTRUIR LA IMAGEN SI HAY CAMBIOS EN EL DOCKERFILE)
+
+el servidor main.py se levanta y recarga en base al dokcer
+
+JUSTTT
+Construcción del Entorno Consistente: El Dockerfile define cómo se construye la imagen de tu aplicación. Esto garantiza que tu aplicación se ejecute en un entorno idéntico al de cualquier otro desarrollador o al servidor de producción, evitando problemas de "en mi máquina funciona". Incluye la instalación de las dependencias (requirements.txt) y la configuración del entorno de ejecución de Python.
+Orquestación de Servicios Externos: El docker-compose.yml es crucial porque el PDF requiere tecnologías adicionales: RabbitMQ y una base de datos. Tu aplicación no puede funcionar sola. docker-compose up se encarga de:
+Descargar (si no están presentes) las imágenes de RabbitMQ y PostgreSQL.
+Crear y ejecutar contenedores para tu aplicación, RabbitMQ y la base de datos.
+Configurar automáticamente la red interna para que estos contenedores puedan comunicarse entre sí usando sus nombres de servicio (por ejemplo, tu app se conecta a la BD usando el hostname db).
+Configurar variables de entorno (como DATABASE_URL y RABBITMQ_URL) para que tu aplicación sepa cómo conectarse a estos servicios.
+Montar volúmenes para persistir datos (por ejemplo, que la información de la base de datos no se pierda al detener el contenedor).
+Facilita el Desarrollo y Pruebas: Al usar volúmenes (volumes en docker-compose.yml), el código fuente de tu aplicación se monta dentro del contenedor. Esto, combinado con uvicorn --reload en el comando de tu servicio, permite que los cambios en tu código local se reflejen automáticamente en la aplicación en ejecución sin necesidad de reconstruir la imagen constantemente.
+Cumple con el Requisito de Docker: El PDF exige un Dockerfile y un docker-compose.yml. Usar docker-compose up es precisamente la forma estándar y esperada de ejecutar un proyecto definido de esta manera.
+
+
+En resumen: docker-compose up no solo ejecuta tu aplicación, sino que crea todo el ecosistema necesario para que funcione según la arquitectura solicitada (FastAPI, RabbitMQ, BD) de forma aislada, reproducible y fácil de gestionar. Es la herramienta que une todas las partes del entorno definido en tus archivos de configuración Docker.

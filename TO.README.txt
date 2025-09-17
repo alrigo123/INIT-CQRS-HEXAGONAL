@@ -1,0 +1,27 @@
+Basándome en el PDF y en buenas prácticas, te sugiero este orden para empezar:
+
+1. requirements.txt: Definir las dependencias es el primer paso lógico. Esto te permitirá crear el entorno (Docker) con todo lo necesario.
+2. Dockerfile y docker-compose.yml: Configurar el entorno de ejecución. Especifica cómo se construye tu aplicación y qué otros servicios (PostgreSQL, RabbitMQ) necesita. Esto te da un entorno donde probar.
+3. Modelo de Dominio (users/domain/models.py): Define la entidad central User. Esta es la regla de negocio pura, sin dependencias externas. Es el núcleo.
+4. Comando (users/application/commands/create_user_command.py): Define la estructura del comando para crear un usuario.
+5. Definición de la BD (users/infrastructure/persistence/user_model.py): Crea el modelo de SQLAlchemy que mapeará a la tabla de la base de datos. Aunque está en la capa de infraestructura, es necesario para persistir el modelo de dominio.
+6. Repositorio (users/domain/repositories.py y users/infrastructure/persistence/repositories.py): Define la interfaz del repositorio en el dominio y su implementación con SQLAlchemy en la infraestructura. Esto conecta el dominio con la persistencia sin acoplamiento directo.
+7. Handler del Comando (users/application/commands/handlers.py): Implementa la lógica que usa el repositorio para guardar el usuario cuando recibe el comando CreateUserCommand.
+8. Publicador de Comandos a RabbitMQ (users/infrastructure/messaging/rabbitmq_publisher.py): Implementa la lógica para enviar el comando CreateUserCommand a una cola de RabbitMQ.
+9. Consumidor de Comandos de RabbitMQ (users/infrastructure/messaging/rabbitmq_consumer.py): Implementa un worker que escuche la cola de RabbitMQ, reciba el comando y ejecute el handler correspondiente.
+10. app/main.py y app/dependencies.py: Configura la aplicación FastAPI, define cómo se inyectan las dependencias (repo real vs mock, publisher real vs mock) y cómo se conectan los routers.
+11. Endpoint/API (users/infrastructure/api/v1/routes.py y schemas.py): Crea el endpoint POST /users que recibirá la solicitud, creará el comando y lo publicará usando el adaptador de RabbitMQ.
+12. Consulta y Endpoint de Lectura: Una vez que la escritura funciona, implementas la parte de consulta (GetUserQuery, handler, endpoint GET /users/{id}).
+
+
+
+
+Pruebas: Aunque construyes la lógica, el PDF exige pruebas unitarias, especialmente cubriendo el 80% del dominio. Esto incluye configurar pytest y escribir los tests.
+Documentación: El README.md detallado es un requerimiento obligatorio.
+Configuración final de dependencias e inyección: Asegurar que toda la inyección de dependencias esté correctamente configurada en app/dependencies.py y que la aplicación se ensamble correctamente en app/main.py.
+Consumidor de RabbitMQ: Necesitas un script o proceso para ejecutar el consumidor de comandos (users/infrastructure/messaging/rabbitmq_consumer.py).
+
+
+
+Para tu entrega final, considera seriamente agregar un segundo servicio worker en docker-compose.yml que ejecute automáticamente el consumidor. Esto hará que tu solución sea mucho más profesional y fácil de probar, demostrando que has pensado en la totalidad del sistema.
+

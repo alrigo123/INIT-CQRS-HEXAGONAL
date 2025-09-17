@@ -1,0 +1,92 @@
+
+
+version: '3.8'
+
+services:
+  # Servicio de la base de datos (ejemplo con PostgreSQL)
+  db:
+    image: postgres:15-alpine # Usa una versión estable y una imagen ligera
+    environment:
+      POSTGRES_DB: myapp_db # Nombre de la base de datos
+      POSTGRES_USER: myapp_user # Usuario de la base de datos
+      POSTGRES_PASSWORD: myapp_password # Contraseña de la base de datos (usa secrets en producción)
+    volumes:
+      # Monta un volumen para persistir los datos de la BD
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Expone el puerto de la BD solo para desarrollo (opcional)
+      - "5432:5432"
+    # networks:
+    #   - app-network # (Opcional) Define redes personalizadas
+
+  # Servicio de RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine # Incluye la interfaz web de administración
+    environment:
+      RABBITMQ_DEFAULT_USER: myapp_user # Usuario de RabbitMQ
+      RABBITMQ_DEFAULT_PASS: myapp_password # Contraseña de RabbitMQ (usa secrets en producción)
+    volumes:
+      # Monta un volumen para persistir la configuración y datos de RabbitMQ
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      # Puerto para la API y la interfaz web de administración
+      - "5672:5672" # Puerto principal de AMQP
+      - "15672:15672" # Puerto para la interfaz web de administración
+    # networks:
+    #   - app-network
+
+  # Servicio de tu aplicación backend (Servidor Web/API)
+  backend:
+    # Construye la imagen desde el Dockerfile en el contexto actual (.)
+    build: .
+    # Comando para ejecutar la aplicación (FastAPI con Uvicorn)
+    # --host 0.0.0.0 es necesario para que el contenedor acepte conexiones externas
+    # --reload es útil para desarrollo, lo puedes quitar en producción
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      # Monta el código fuente para desarrollo (hot-reloading)
+      - .:/app
+    ports:
+      # Expone el puerto donde corre la aplicación
+      - "8000:8000"
+    environment:
+      # Define variables de entorno para que la app se conecte a los otros servicios
+      DATABASE_URL: postgresql://myapp_user:myapp_password@db:5432/myapp_db
+      RABBITMQ_URL: amqp://myapp_user:myapp_password@rabbitmq:5672/
+      # Puedes añadir más variables de entorno aquí
+    # depends_on hace que Docker inicie 'db' y 'rabbitmq' antes que 'backend'
+    depends_on:
+      - db
+      - rabbitmq
+    # networks:
+    #   - app-network
+
+  # Servicio del Worker (Consumidor de Comandos de RabbitMQ)
+  worker:
+    # Construye la misma imagen que 'backend'
+    build: .
+    # Comando para ejecutar el script del consumidor de RabbitMQ
+    # Este comando ejecuta el módulo start_consumer como un script
+    command: python -m app.users.infrastructure.messaging.start_consumer
+    volumes:
+      # Monta el código fuente para que los cambios se reflejen (útil para desarrollo)
+      - .:/app
+    environment:
+      # El worker también necesita conectarse a la BD y RabbitMQ
+      DATABASE_URL: postgresql://myapp_user:myapp_password@db:5432/myapp_db
+      RABBITMQ_URL: amqp://myapp_user:myapp_password@rabbitmq:5672/
+    depends_on:
+      - db
+      - rabbitmq
+    # networks:
+    #   - app-network
+
+# Define volúmenes con nombre para persistir datos
+volumes:
+  postgres_data:
+  rabbitmq_data:
+
+# (Opcional) Define redes personalizadas para aislar los servicios
+# networks:
+#   app-network:
+#     driver: bridge
