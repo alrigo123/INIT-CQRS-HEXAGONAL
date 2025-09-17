@@ -38,3 +38,61 @@ Sí, es muy bueno que el worker tenga esta lógica de reintentos. Es una prácti
 Resiliencia: Evita que el worker falle permanentemente por un problema temporal de red o concurrencia.
 Automatización: No requiere intervención manual para reiniciar el worker si hay un problema transitorio.
 Práctica recomendada: Muchas aplicaciones en producción usan estrategias similares para manejar fallos de conexión a servicios externos.
+
+
+
+En Python >= 3.3, se introdujeron los "Implicit Namespace Packages", que técnicamente permiten importar módulos sin __init__.py. Sin embargo, es una práctica estándar y muy recomendada seguir usándolos porque:
+Hace explícita la intención de que una carpeta es un paquete.
+Permite ejecutar código de inicialización del paquete (poniendo código dentro del __init__.py).
+Facilita la compatibilidad con herramientas y linters.
+Mejora la claridad y mantenibilidad del proyecto.
+¿Qué pasaría si no los hubiéramos creado?: Python no reconocería las carpetas como paquetes, y no podrías hacer importaciones como from app.users.domain.models import User. Obtendrías errores ModuleNotFoundError.
+
+
+
+
+Ejemplos de CQRS y Dominio vs. Framework:
+Ya lo hemos hecho prácticamente. Lo que construimos es un ejemplo.
+Dominio: La carpeta app/users/domain/.
+models.py -> class User: Contiene reglas de negocio puras (validar email).
+repositories.py -> class UserRepository(ABC): Define qué operaciones necesita el dominio sin decir cómo.
+No importa FastAPI, SQLAlchemy, Pika.
+Aplicación (CQRS - Comando): La carpeta app/users/application/commands/.
+create_user_command.py -> class CreateUserCommand: Representa la intención de escritura.
+handlers.py -> def handle_create_user(...): Contiene la lógica para procesar el comando. Usa el dominio, pero sigue siendo agnóstico a frameworks.
+Infraestructura (CQRS - Adaptadores):
+infrastructure/persistence/: Adaptador para la BD.
+user_model.py -> class UserModel: Mapeo específico a la BD (SQLAlchemy). Depende de SQLAlchemy.
+repositories.py -> class SQLAlchemyUserRepository: Implementación concreta del UserRepository. Depende de SQLAlchemy.
+infrastructure/messaging/: Adaptador para mensajería.
+rabbitmq_publisher.py: Publica comandos. Depende de Pika.
+rabbitmq_consumer.py: Consume comandos. Depende de Pika.
+infrastructure/api/: Adaptador para la interfaz web.
+v1/routes.py: Endpoints de FastAPI. Depende de FastAPI.
+v1/schemas.py: Modelos Pydantic. Depende de Pydantic/FastAPI.
+En resumen: El núcleo (dominio + aplicación) es puro Python. La infraestructura contiene todo el código que depende de herramientas externas (FastAPI, SQLAlchemy, Pika).
+
+
+
+
+
+¿Cómo funcionan las colas con RabbitMQ y la app?
+Productor (Publisher): Tu API (RabbitMQPublisher) es el productor. Cuando llega un POST /users, crea un comando y lo publica en una cola específica (por ejemplo, user_commands) en RabbitMQ.
+RabbitMQ (Broker de Mensajes):
+Recibe el mensaje del productor.
+Lo almacena en la cola user_commands.
+Gestiona la entrega de mensajes a los consumidores.
+Garantiza que los mensajes se entreguen al menos una vez.
+Maneja confirmaciones (ACK) cuando un consumidor procesa un mensaje correctamente, o reencola mensajes si un consumidor falla (NACK).
+Consumidor (Consumer): Tu worker (RabbitMQConsumer) es el consumidor. Se conecta a RabbitMQ, se suscribe a la cola user_commands, y espera mensajes.
+Cuando llega un mensaje, RabbitMQ se lo entrega al consumidor.
+El consumidor procesa el mensaje (ejecuta handle_create_user).
+Si el procesamiento es exitoso, el consumidor envía un ACK a RabbitMQ. RabbitMQ elimina el mensaje de la cola.
+Si el procesamiento falla, el consumidor puede enviar un NACK. RabbitMQ puede reencolar el mensaje o enviarlo a una cola de mensajes fallidos (dead-letter).
+Esto permite una comunicación asíncrona y desacoplada entre la API y la lógica de negocio.
+
+
+
+
+
+
