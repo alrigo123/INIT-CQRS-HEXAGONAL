@@ -10,3 +10,8 @@ Pruebas de integración para SQLAlchemyUserRepository y SQLAlchemyTokenRepositor
 Pruebas para RabbitMQPublisher y RabbitMQConsumer.
 
 
+Falta crear pruebas para:
+tests/users/application/commands/test_handlers.py (probar handle_create_user).
+tests/auth/domain/test_models.py (probar Token).
+tests/auth/application/commands/test_handlers.py (probar handle_register_user_for_auth_context, handle_login_user).
+tests/auth/application/queries/test_handlers.py (probar handle_validate_token).
