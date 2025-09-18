@@ -207,3 +207,29 @@ Arquitectura Hexagonal: Cada contexto (users, auth) tiene su dominio independien
 CQRS: users maneja comandos (escritura) y auth maneja comandos (escritura, como crear tokens) y consultas (lectura, como validar tokens). La separación de responsabilidades está clara. La BD compartida no afecta esto, ya que las operaciones de lectura y escritura siguen estando claramente definidas (comandos van por RabbitMQ, consultas van directas a la BD).
 Conclusión
 No estás entendiendo mal. Estás implementando correctamente una base de datos lógica compartida (myapp_db) donde cada contexto tiene su propia tabla (users, tokens). Esto es el patrón correcto y común para esta arquitectura cuando los contextos están estrechamente relacionados y comparten la misma base de datos física. La sensación de "enredo" viene de la complejidad inherente de coordinar dos contextos, pero la estructura que has construido es sólida y sigue los principios solicitados.
+
+
+¿Qué falta para una comunicación basada en eventos más completa?
+Publicación de Eventos de Dominio: Lo que falta es que, una vez que el auth-worker termina de procesar el comando RegisterUserCommand (es decir, crea el usuario y el token), publique un nuevo evento indicando que eso sucedió.
+Por ejemplo: UserRegisteredEvent (conteniendo el ID del usuario, su email, etc.).
+Consumidores de Eventos de Dominio: Luego, podrías tener otros consumidores (incluso en el mismo contexto auth o en un nuevo contexto como notifications) que escuchen el UserRegisteredEvent.
+Por ejemplo: Un notifications-worker que escuche UserRegisteredEvent y envíe un email de bienvenida.
+Esto crearía un sistema donde las acciones generan eventos, y otros servicios reaccionan a esos eventos de forma independiente y desacoplada.
+
+
+
+¿Se basa en compartir modelos de lectura?
+No necesariamente. Compartir modelos de lectura (JOIN directo entre tablas de users y auth) es una técnica para consultas sincrónicas cuando necesitas datos de múltiples contextos que están en la misma BD.
+Comunicación basada en eventos es una técnica para comunicación asíncrona entre contextos, basada en mensajes (eventos) que pasan por una cola (RabbitMQ).
+Son dos enfoques diferentes para resolver problemas de integración:
+JOIN/Modelos compartidos: Para consultas complejas en el momento (sincrónico).
+Eventos/Colas: Para reaccionar a acciones y realizar tareas secundarias (asincrónico).
+
+
+(puertos, adaptadores, aplicación, dominio, infra) where is used ?
+
+
+
+Nos referimos a que, una vez que el auth-worker termina de procesar con éxito un RegisterUserCommand (es decir, crea el usuario en users y el token en auth), publique un nuevo mensaje en una cola de eventos, por ejemplo, UserRegisteredEvent.
+Este UserRegisteredEvent podría ser consumido por otros servicios (incluso potencialmente un notifications-worker que envíe un email de bienvenida).
+

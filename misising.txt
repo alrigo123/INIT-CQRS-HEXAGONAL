@@ -1,0 +1,12 @@
+¿Qué puedes mejorar (opcional)?
+Aunque ya cumples con todo lo exigido, siempre se puede aspirar a la excelencia:
+
+Aumentar la cobertura general al 90%+:
+Las áreas con menor cobertura son:
+app\auth\application\commands\handlers.py (40%): Parece que hay mucha lógica no probada aquí. Revisa si las pruebas test_handlers.py en auth/application/commands/ están ejecutándose y son completas.
+app\auth\domain\repositories.py (77%) y app\users\domain\repositories.py (78%): Son clases abstractas/interfaces, por lo que una cobertura del 100% no es crítica, pero se puede revisar.
+Agregar pruebas para la infraestructura (Opcional pero muy valioso):
+Pruebas de integración para SQLAlchemyUserRepository y SQLAlchemyTokenRepository.
+Pruebas para RabbitMQPublisher y RabbitMQConsumer.
+
+

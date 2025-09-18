@@ -72,3 +72,16 @@ coverage html
 Este informe te dirá exactamente qué líneas de código están cubiertas y cuáles no.
 
 Con esto, has completado una parte fundamental de los requisitos. Ahora podemos seguir con el contexto auth o con otras pruebas. ¿Te gustaría que creemos el contexto auth siguiendo el mismo patrón?
+
+
+
+para todos
+
+coverage run -m pytest
+
+coverage report
+
+coverage html
+
+
+coverage report --include="app/*/domain/*"  (solo dominio)
