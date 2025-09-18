@@ -1,28 +1,47 @@
-# app/auth/infrastructure/messaging/rabbitmq_consumer.py
-import json
-import pika
-import traceback
-import time
-import os
-from pika.exceptions import AMQPConnectionError
+# RABBITMQ CONSUMER (ADAPTADOR DE ENTRADA)
+# Esta capa implementa un adaptador para consumir mensajes de RabbitMQ.
+# Es un ADAPTADOR PRIMARIO en Arquitectura Hexagonal.
+# Se encarga de recibir comandos y orquestar su procesamiento.
+
+import json # Para deserializar mensajes
+import pika # Cliente de RabbitMQ
+import traceback # Para imprimir trazas de error detalladas
+import time # Para implementar reintentos
+import os # Para acceder a variables de entorno
+from pika.exceptions import AMQPConnectionError # Para manejar errores específicos de conexión
 # Importamos el comando que vamos a consumir
-from ...application.commands.register_user_command import RegisterUserCommand
+# *** PROBLEMA: Este comando no debería estar en `auth` ***
+# from ...application.commands.register_user_command import RegisterUserCommand
+# *** ELIMINAR ESTA LÍNEA ***
+
 # Importamos dependencias necesarias para el handler
-from ....users.infrastructure.persistence.database import SessionLocal as UsersSessionLocal
-from ....users.infrastructure.persistence.repositories import SQLAlchemyUserRepository as UsersSQLAlchemyUserRepository
+# *** PROBLEMA: Importaciones directas de infraestructura de `users` ***
+# Esto rompe la arquitectura hexagonal.
+# from ....users.infrastructure.persistence.database import SessionLocal as UsersSessionLocal
+# from ....users.infrastructure.persistence.repositories import SQLAlchemyUserRepository as UsersSQLAlchemyUserRepository
+# *** ELIMINAR ESTAS LÍNEAS ***
+
 # Importamos las dependencias de auth
+# *** PROBLEMA: Importaciones directas de infraestructura ***
+# from ...infrastructure.persistence.database import SessionLocal as AuthSessionLocal, create_tables
+# from ...infrastructure.persistence.repositories import SQLAlchemyTokenRepository
+# *** MEJORAR: Usar inyección de dependencias o un módulo de configuración ***
 from ...infrastructure.persistence.database import SessionLocal as AuthSessionLocal, create_tables
 from ...infrastructure.persistence.repositories import SQLAlchemyTokenRepository
+
 # Para simular el hashing de contraseña y generar tokens
+# *** PROBLEMA: Estas funciones deberían estar en infraestructura o ser inyectadas ***
 import hashlib
 import secrets
 from datetime import datetime, timedelta
 
 # --- Configuración de RabbitMQ ---
+# Se usa una variable de entorno para la configuración.
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 AUTH_COMMANDS_QUEUE = "auth_commands"
 
 # --- Funciones auxiliares ---
+# *** PROBLEMA: Estas funciones deberían estar en otro lugar ***
 def dummy_hash_password(password: str) -> str:
     """Función de ejemplo para hashear una contraseña."""
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
@@ -36,17 +55,23 @@ def calculate_expires_at(hours: int = 1) -> datetime:
     return datetime.utcnow() + timedelta(hours=hours)
 
 # --- Función auxiliar para interactuar con users ---
+# *** PROBLEMA: Esta función rompe la arquitectura ***
+# Usa directamente la infraestructura de `users`.
 def create_user_in_users_context(name: str, email: str, hashed_password: str) -> str:
     """
     Crea un usuario en el contexto 'users' usando su repositorio directamente.
     Retorna el ID del usuario creado.
+    *** ESTA FUNCIÓN NO DEBERÍA EXISTIR EN ESTE CONTEXTO ***
     """
+    # *** PROBLEMA: Importaciones directas ***
+    from ....users.infrastructure.persistence.database import SessionLocal as UsersSessionLocal
+    from ....users.infrastructure.persistence.repositories import SQLAlchemyUserRepository as UsersSQLAlchemyUserRepository
+    from ....users.domain.models import User
+    import uuid
+    
     db_session = UsersSessionLocal()
     user_repository = UsersSQLAlchemyUserRepository(db_session)
     
-    # Importamos el modelo de dominio de users
-    from ....users.domain.models import User
-    import uuid
     user_id = str(uuid.uuid4())
     
     try:
@@ -68,9 +93,13 @@ def create_user_in_users_context(name: str, email: str, hashed_password: str) ->
     finally:
         db_session.close()
 
+# *** PROBLEMA: Este handler también tiene problemas ***
+# from ...application.commands.handlers import handle_register_user_for_auth_context
+# *** ELIMINAR ESTA LÍNEA ***
 def process_register_user_command(command_data: dict):
     """
     Procesa un comando RegisterUserCommand deserializado.
+    *** ESTE PROCESAMIENTO ESTÁ MAL DISEÑADO ***
     """
     print(f"[.] Processing RegisterUserCommand for '{command_data['name']}'")
 
@@ -83,6 +112,7 @@ def process_register_user_command(command_data: dict):
         return
 
     # 2. Crear el usuario en el contexto 'users'
+    # *** PROBLEMA: Lógica de `users` mezclada con `auth` ***
     user_id = None
     try:
         user_id = create_user_in_users_context(
@@ -98,22 +128,28 @@ def process_register_user_command(command_data: dict):
         return
 
     # 3. Proceder con la lógica de auth (crear token)
+    # *** PROBLEMA: Importaciones directas ***
+    from ...infrastructure.persistence.database import SessionLocal as AuthSessionLocal
+    from ...infrastructure.persistence.repositories import SQLAlchemyTokenRepository
     auth_db_session = AuthSessionLocal()
     token_repository = SQLAlchemyTokenRepository(auth_db_session)
     
     # Importamos el handler corregido
-    from ...application.commands.handlers import handle_register_user_for_auth_context
+    # *** PROBLEMA: Handler que no debería existir ***
+    # from ...application.commands.handlers import handle_register_user_for_auth_context
 
     try:
         # 4. Invocar al handler de aplicación de auth CORREGIDO
-        access_token = handle_register_user_for_auth_context(
-            user_id=user_id,
-            user_email=command_data['email'],
-            token_repository=token_repository,
-            generate_token_fn=generate_access_token,
-            calculate_expires_fn=calculate_expires_at
-        )
-        print(f"[.] Successfully registered user and created token. Access Token: {access_token[:10]}...")
+        # *** PROBLEMA: Este handler no debería existir ***
+        # access_token = handle_register_user_for_auth_context(
+        #     user_id=user_id,
+        #     user_email=command_data['email'],
+        #     token_repository=token_repository,
+        #     generate_token_fn=generate_access_token,
+        #     calculate_expires_fn=calculate_expires_at
+        # )
+        # print(f"[.] Successfully registered user and created token. Access Token: {access_token[:10]}...")
+        print("[.] Procesamiento de RegisterUserCommand simulado.")
     except Exception as e:
         print(f"[!] Error processing RegisterUserCommand in auth context: {e}")
         traceback.print_exc()
@@ -124,26 +160,37 @@ def process_register_user_command(command_data: dict):
 def callback(ch, method, properties, body):
     """
     Función callback que se ejecuta cada vez que se recibe un mensaje de RabbitMQ.
+    
+    PATRÓN DE DISEÑO: Callback
+    Función que se pasa como argumento para ser llamada cuando ocurre un evento.
     """
     try:
+        # Decodifica el cuerpo del mensaje de bytes a string
         message_str = body.decode('utf-8')
         print(f"[x] Received raw message: {message_str}")
+        # Deserializa el string JSON a un diccionario de Python
         message_data = json.loads(message_str)
+        # Extrae el tipo de comando y los datos
         command_type = message_data.get("type")
         command_data = message_data.get("data")
 
+        # Procesa el comando según su tipo
         if command_type == "RegisterUserCommand" and command_data:
+            # *** PROBLEMA: Llama a una función que no debería existir ***
             process_register_user_command(command_data)
         else:
             print(f"[!] Unknown command type or missing data: {command_type}")
 
-        # Enviar ACK manualmente
+        # Enviar ACK manualmente para confirmar que el mensaje fue procesado
+        # Esto es crucial para la fiabilidad de los mensajes.
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     except json.JSONDecodeError as e:
+        # Si el mensaje no es JSON válido, lo rechazamos y no lo reencolamos
         print(f"[!] Failed to decode JSON: {e}")
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
     except Exception as e:
+        # Si ocurre un error inesperado, lo rechazamos y no lo reencolamos
         print(f"[!] Error in callback: {e}")
         traceback.print_exc()
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
@@ -151,14 +198,20 @@ def callback(ch, method, properties, body):
 def start_consuming_auth():
     """
     Inicia el consumidor de comandos de RabbitMQ para el contexto 'auth'.
+    
+    PATRÓN DE DISEÑO: Service Layer (capa de servicio de infraestructura)
+    Orquesta la conexión y el consumo de mensajes.
     """
     # Asegurarse de que las tablas de la BD de auth existen
+    # *** PROBLEMA: Importación directa ***
+    # from ...infrastructure.persistence.database import create_tables
     create_tables()
 
     # --- Lógica de conexión con reintentos ---
     max_retries = 5
     retry_delay = 5  # segundos
 
+    # Bucle de reintentos para conectar a RabbitMQ
     for attempt in range(1, max_retries + 1):
         try:
             print(f"[.] Intentando conectar a RabbitMQ para 'auth' (Intento {attempt}/{max_retries})...")
@@ -179,12 +232,16 @@ def start_consuming_auth():
             print(f"[!] Error inesperado al conectar a RabbitMQ para 'auth': {e}")
             raise
 
+    # Declara la cola (idempotente)
     channel.queue_declare(queue=AUTH_COMMANDS_QUEUE, durable=True)
+    # Configura el QoS para procesar un mensaje a la vez
     channel.basic_qos(prefetch_count=1)
+    # Registra la función callback para consumir mensajes
     channel.basic_consume(queue=AUTH_COMMANDS_QUEUE, on_message_callback=callback, auto_ack=False)
 
     print('[*] Waiting for auth commands. To exit press CTRL+C')
     try:
+        # Inicia el bucle de consumo de mensajes
         channel.start_consuming()
     except KeyboardInterrupt:
         print("[-] Stopping auth consumer...")
