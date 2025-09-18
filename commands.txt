@@ -1,0 +1,32 @@
+## DB CONNECTION
+docker-compose exec db bash # acceder al contenedor de la base de datos
+psql -U myapp_user -d myapp_db # conectarse a la base de datos
+\dt #Listar todas las tablas
+
+SELECT * FROM users;
+SELECT * FROM tokens;
+
+## TESTING
+(venv) PS D:\ALL PROJECTS\JOB TEST TECH\INIT-CQRS-HEXAGONAL> pytest --version
+(venv) PS D:\ALL PROJECTS\JOB TEST TECH\INIT-CQRS-HEXAGONAL> pytest tests/users/domain/test_user_model.py
+
+pip install coverage
+
+# Ejecuta las pruebas y genera un informe de cobertura
+coverage run -m pytest tests/users/domain/
+
+# Luego, genera un informe en la consola
+coverage report
+
+# Ejecuta las pruebas de 'users' y mide la cobertura
+# Incluimos 'domain' y 'application' porque esas son las que contribuyen al 80%
+coverage run --source=app/users/domain,app/users/application -m pytest tests/users/domain/ tests/users/application/
+
+# O genera un informe HTML para verlo en el navegador
+coverage html
+
+# Para todos los archivos
+coverage run -m pytest
+coverage report
+coverage html
+coverage report --include="app/*/domain/*"  (solo dominio)

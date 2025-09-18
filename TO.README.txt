@@ -1,157 +1,89 @@
-Basándome en el PDF y en buenas prácticas, te sugiero este orden para empezar:
-
-1. requirements.txt: Definir las dependencias es el primer paso lógico. Esto te permitirá crear el entorno (Docker) con todo lo necesario.
-2. Dockerfile y docker-compose.yml: Configurar el entorno de ejecución. Especifica cómo se construye tu aplicación y qué otros servicios (PostgreSQL, RabbitMQ) necesita. Esto te da un entorno donde probar.
-3. Modelo de Dominio (users/domain/models.py): Define la entidad central User. Esta es la regla de negocio pura, sin dependencias externas. Es el núcleo.
-4. Comando (users/application/commands/create_user_command.py): Define la estructura del comando para crear un usuario.
-5. Definición de la BD (users/infrastructure/persistence/user_model.py): Crea el modelo de SQLAlchemy que mapeará a la tabla de la base de datos. Aunque está en la capa de infraestructura, es necesario para persistir el modelo de dominio.
-6. Repositorio (users/domain/repositories.py y users/infrastructure/persistence/repositories.py): Define la interfaz del repositorio en el dominio y su implementación con SQLAlchemy en la infraestructura. Esto conecta el dominio con la persistencia sin acoplamiento directo.
-7. Handler del Comando (users/application/commands/handlers.py): Implementa la lógica que usa el repositorio para guardar el usuario cuando recibe el comando CreateUserCommand.
-8. Publicador de Comandos a RabbitMQ (users/infrastructure/messaging/rabbitmq_publisher.py): Implementa la lógica para enviar el comando CreateUserCommand a una cola de RabbitMQ.
-9. Consumidor de Comandos de RabbitMQ (users/infrastructure/messaging/rabbitmq_consumer.py): Implementa un worker que escuche la cola de RabbitMQ, reciba el comando y ejecute el handler correspondiente.
-10. app/main.py y app/dependencies.py: Configura la aplicación FastAPI, define cómo se inyectan las dependencias (repo real vs mock, publisher real vs mock) y cómo se conectan los routers.
-11. Endpoint/API (users/infrastructure/api/v1/routes.py y schemas.py): Crea el endpoint POST /users que recibirá la solicitud, creará el comando y lo publicará usando el adaptador de RabbitMQ.
-12. Consulta y Endpoint de Lectura: Una vez que la escritura funciona, implementas la parte de consulta (GetUserQuery, handler, endpoint GET /users/{id}).
-
-
-
-
-Pruebas: Aunque construyes la lógica, el PDF exige pruebas unitarias, especialmente cubriendo el 80% del dominio. Esto incluye configurar pytest y escribir los tests.
-Documentación: El README.md detallado es un requerimiento obligatorio.
-Configuración final de dependencias e inyección: Asegurar que toda la inyección de dependencias esté correctamente configurada en app/dependencies.py y que la aplicación se ensamble correctamente en app/main.py.
-Consumidor de RabbitMQ: Necesitas un script o proceso para ejecutar el consumidor de comandos (users/infrastructure/messaging/rabbitmq_consumer.py).
-
-
-
-Para tu entrega final, considera seriamente agregar un segundo servicio worker en docker-compose.yml que ejecute automáticamente el consumidor. Esto hará que tu solución sea mucho más profesional y fácil de probar, demostrando que has pensado en la totalidad del sistema.
-
-
-
-¿Por qué sucede esto?
-Esto es muy común en entornos Docker. Cuando levantas todo el entorno con docker compose up, todos los servicios (PostgreSQL, RabbitMQ, backend, worker) se inician al mismo tiempo. Aunque depends_on hace que el worker espere a que db y rabbitmq estén listos, el orden exacto de inicio y la velocidad de inicialización pueden variar.
-
-En muchos casos, aunque rabbitmq está marcado como Up, su interfaz de red interna puede no estar completamente lista para aceptar conexiones desde otros contenedores en el momento exacto en que el worker intenta conectarse. Por eso, el worker falla en los primeros intentos.
-
-¿Es bueno que llegue a 4?
-Sí, es muy bueno que el worker tenga esta lógica de reintentos. Es una práctica de ingeniería robusta:
-
-Resiliencia: Evita que el worker falle permanentemente por un problema temporal de red o concurrencia.
-Automatización: No requiere intervención manual para reiniciar el worker si hay un problema transitorio.
-Práctica recomendada: Muchas aplicaciones en producción usan estrategias similares para manejar fallos de conexión a servicios externos.
-
-
-
-En Python >= 3.3, se introdujeron los "Implicit Namespace Packages", que técnicamente permiten importar módulos sin __init__.py. Sin embargo, es una práctica estándar y muy recomendada seguir usándolos porque:
-Hace explícita la intención de que una carpeta es un paquete.
 Permite ejecutar código de inicialización del paquete (poniendo código dentro del __init__.py).
 Facilita la compatibilidad con herramientas y linters.
 Mejora la claridad y mantenibilidad del proyecto.
-¿Qué pasaría si no los hubiéramos creado?: Python no reconocería las carpetas como paquetes, y no podrías hacer importaciones como from app.users.domain.models import User. Obtendrías errores ModuleNotFoundError.
-
+Si no los hubiéramos creado, Python no reconocería las carpetas como paquetes, y no podrías hacer importaciones como from app.users.domain.models import User. Obtendrías errores ModuleNotFoundError.
 
 
 
 Ejemplos de CQRS y Dominio vs. Framework:
-Ya lo hemos hecho prácticamente. Lo que construimos es un ejemplo.
+
 Dominio: La carpeta app/users/domain/.
 models.py -> class User: Contiene reglas de negocio puras (validar email).
 repositories.py -> class UserRepository(ABC): Define qué operaciones necesita el dominio sin decir cómo.
+
 No importa FastAPI, SQLAlchemy, Pika.
+
 Aplicación (CQRS - Comando): La carpeta app/users/application/commands/.
 create_user_command.py -> class CreateUserCommand: Representa la intención de escritura.
 handlers.py -> def handle_create_user(...): Contiene la lógica para procesar el comando. Usa el dominio, pero sigue siendo agnóstico a frameworks.
+
 Infraestructura (CQRS - Adaptadores):
 infrastructure/persistence/: Adaptador para la BD.
-user_model.py -> class UserModel: Mapeo específico a la BD (SQLAlchemy). Depende de SQLAlchemy.
-repositories.py -> class SQLAlchemyUserRepository: Implementación concreta del UserRepository. Depende de SQLAlchemy.
+ user_model.py -> class UserModel: Mapeo específico a la BD (SQLAlchemy). Depende de SQLAlchemy.
+ repositories.py -> class SQLAlchemyUserRepository: Implementación concreta del UserRepository. Depende de SQLAlchemy.
 infrastructure/messaging/: Adaptador para mensajería.
-rabbitmq_publisher.py: Publica comandos. Depende de Pika.
-rabbitmq_consumer.py: Consume comandos. Depende de Pika.
+ rabbitmq_publisher.py: Publica comandos. Depende de Pika.
+ rabbitmq_consumer.py: Consume comandos. Depende de Pika.
 infrastructure/api/: Adaptador para la interfaz web.
-v1/routes.py: Endpoints de FastAPI. Depende de FastAPI.
-v1/schemas.py: Modelos Pydantic. Depende de Pydantic/FastAPI.
+ v1/routes.py: Endpoints de FastAPI. Depende de FastAPI.
+ v1/schemas.py: Modelos Pydantic. Depende de Pydantic/FastAPI.
+
 En resumen: El núcleo (dominio + aplicación) es puro Python. La infraestructura contiene todo el código que depende de herramientas externas (FastAPI, SQLAlchemy, Pika).
 
-
-
-
-
 ¿Cómo funcionan las colas con RabbitMQ y la app?
-Productor (Publisher): Tu API (RabbitMQPublisher) es el productor. Cuando llega un POST /users, crea un comando y lo publica en una cola específica (por ejemplo, user_commands) en RabbitMQ.
+Productor (Publisher): 
+ Tu API (RabbitMQPublisher) es el productor. Cuando llega un POST /users, crea un comando y lo publica en una cola específica (por ejemplo, user_commands) en RabbitMQ.
 RabbitMQ (Broker de Mensajes):
-Recibe el mensaje del productor.
-Lo almacena en la cola user_commands.
-Gestiona la entrega de mensajes a los consumidores.
-Garantiza que los mensajes se entreguen al menos una vez.
-Maneja confirmaciones (ACK) cuando un consumidor procesa un mensaje correctamente, o reencola mensajes si un consumidor falla (NACK).
-Consumidor (Consumer): Tu worker (RabbitMQConsumer) es el consumidor. Se conecta a RabbitMQ, se suscribe a la cola user_commands, y espera mensajes.
-Cuando llega un mensaje, RabbitMQ se lo entrega al consumidor.
-El consumidor procesa el mensaje (ejecuta handle_create_user).
+ Recibe el mensaje del productor.
+ Lo almacena en la cola user_commands.
+ Gestiona la entrega de mensajes a los consumidores.
+ Garantiza que los mensajes se entreguen al menos una vez.
+ Maneja confirmaciones (ACK) cuando un consumidor procesa un mensaje correctamente, o reencola mensajes si un consumidor falla (NACK).
+Consumidor (Consumer): 
+ Tu worker (RabbitMQConsumer) es el consumidor. Se conecta a RabbitMQ, se suscribe a la cola user_commands, y espera mensajes.
+ Cuando llega un mensaje, RabbitMQ se lo entrega al consumidor.
+ El consumidor procesa el mensaje (ejecuta handle_create_user).
+
 Si el procesamiento es exitoso, el consumidor envía un ACK a RabbitMQ. RabbitMQ elimina el mensaje de la cola.
 Si el procesamiento falla, el consumidor puede enviar un NACK. RabbitMQ puede reencolar el mensaje o enviarlo a una cola de mensajes fallidos (dead-letter).
 Esto permite una comunicación asíncrona y desacoplada entre la API y la lógica de negocio.
 
 
-
-
-profile
-Qwen3-Coder
-3:40 pm
-¡Excelente pregunta! Vamos a despejar estas dudas clave sobre CQRS y Arquitectura Hexagonal.
-
 1. ¿Por qué GET /api/v1/users/{id} no es un Query en el contexto de CQRS?
-Tienes razón, obtener un usuario por su ID es una operación de lectura. Sin embargo, en el patrón CQRS como lo define el PDF, esta operación se considera una consulta directa contra el modelo de lectura, no un Query que requiera una lógica de aplicación específica.
-
-¿Por qué?
+Obtener un usuario por su ID es una operación de lectura. Sin embargo, en el patrón CQRS como lo define el PDF, esta operación se considera una consulta directa contra el modelo de lectura, 
+no un Query que requiera una lógica de aplicación específica.
 
 El modelo de lectura es la base de datos: En tu implementación, la "base de datos" (PostgreSQL) es tu modelo de lectura. La tabla users contiene todos los datos necesarios para responder a la solicitud.
-La lógica es simple: La operación GET /api/v1/users/{id} solo necesita hacer una consulta SQL básica (SELECT * FROM users WHERE id = ?). No hay ninguna lógica de negocio compleja que deba ser ejecutada en la capa de aplicación antes de devolver la respuesta.
-No necesita un handler: Un Query en CQRS normalmente implica una lógica más compleja que debe ser orquestada por un handler. Por ejemplo, si quisieras obtener un resumen del perfil de un usuario que incluya información de sus compras, pagos, etc., eso sería un Query porque requeriría consultar múltiples tablas y combinar los resultados.
-En resumen:
+La lógica es simple: La operación GET /api/v1/users/{id} solo necesita hacer una consulta SQL básica (SELECT * FROM users WHERE id = ?). 
+No hay ninguna lógica de negocio compleja que deba ser ejecutada en la capa de aplicación antes de devolver la respuesta.
+No necesita un handler: Un Query en CQRS normalmente implica una lógica más compleja que debe ser orquestada por un handler. Por ejemplo, si quisieras obtener un resumen del perfil de un usuario que incluya 
+información de sus compras, pagos, etc., eso sería un Query porque requeriría consultar múltiples tablas y combinar los resultados.
 
-Query: Operaciones de lectura con lógica de negocio compleja que deben ser procesadas por un handler en la capa de aplicación.
-Consulta Directa: Operaciones de lectura simples que solo requieren acceder a la base de datos. Se hacen directamente desde el endpoint API.
-
-
-
-
-
-Tu proyecto ya implementa este concepto perfectamente. Vamos a verlo con ejemplos:
 
 Puertos (Ports): Interfaces definidas por el dominio
 Son las interfaces que definen cómo el dominio interactúa con el mundo exterior. Son independientes de cualquier tecnología externa.
 
-Ejemplo 1: UserRepository (en app/users/domain/repositories.py
-
-
-
-    ¿Qué es? Esta es una interfaz (ABC) que define los métodos que cualquier repositorio de usuarios debe implementar.
+Ejemplo 1: UserRepository (en app/users/domain/repositories.py)
+¿Qué es? Esta es una interfaz (ABC) que define los métodos que cualquier repositorio de usuarios debe implementar.
 ¿Dónde está? app/users/domain/repositories.py.
 ¿Cómo funciona? El dominio (User) depende de esta interfaz para guardar y recuperar usuarios. No sabe nada de SQLAlchemy ni de RabbitMQ.
 
-Ejemplo 2: TokenRepository (en app/auth/domain/repositories.py
-
-    ¿Qué es? Otra interfaz que define cómo el dominio de auth interactúa con el almacenamiento de tokens.
+Ejemplo 2: TokenRepository (en app/auth/domain/repositories.py)
+¿Qué es? Otra interfaz que define cómo el dominio de auth interactúa con el almacenamiento de tokens.
 ¿Dónde está? app/auth/domain/repositories.py.
-
-
-
-
-
+¿Cómo funciona? Similar a UserRepository, el dominio de auth usa esta interfaz para manejar tokens sin depender de detalles de implementación.
 
 Adaptadores (Adapters): Implementaciones concretas
 Son las clases que conectan el dominio con las herramientas externas (frameworks, bases de datos, colas).
-
-Ejemplo 1: SQLAlchemyUserRepository (en app/users/infrastructure/persistence/repositories.py
+Ejemplo 1: SQLAlchemyUserRepository (en app/users/infrastructure/persistence/repositories.py)
 ¿Qué es? Una implementación concreta de la interfaz UserRepository usando SQLAlchemy.
 ¿Dónde está? app/users/infrastructure/persistence/repositories.py.
 ¿Cómo funciona? Traduce las llamadas al dominio (save, get_by_id) en operaciones específicas de SQLAlchemy que interactúan con la base de datos.
 
 Ejemplo 2: SQLAlchemyTokenRepository (en app/auth/infrastructure/persistence/repositories.py)
-
 ¿Qué es? Una implementación concreta de la interfaz TokenRepository usando SQLAlchemy.
 ¿Dónde está? app/auth/infrastructure/persistence/repositories.py.
-
+¿Cómo funciona? Similar a SQLAlchemyUserRepository, maneja la persistencia de tokens en la base de datos.
 
 
 Flujo de Datos (El Patrón Hexagonal en Acción)
@@ -162,74 +94,166 @@ El handler llama al método save de UserRepository.
 Como el handler recibe una instancia de SQLAlchemyUserRepository (un adaptador), este último traduce la llamada a operaciones de SQLAlchemy.
 SQLAlchemyUserRepository interactúa con la base de datos real.
 Mundo Exterior: La base de datos (PostgreSQL) recibe las operaciones y devuelve los resultados.
-Este flujo asegura que el dominio sea completamente independiente de las tecnologías externas. Si mañana decides cambiar de SQLAlchemy a Peewee o de PostgreSQL a MongoDB, solo tendrías que reemplazar el adaptador (SQLAlchemyUserRepository por uno nuevo), sin tocar el dominio ni la lógica de aplicación.
+Este flujo asegura que el dominio sea completamente independiente de las tecnologías externas. Si mañana decides cambiar de SQLAlchemy a Peewee o de PostgreSQL a MongoDB, solo tendrías que reemplazar el 
+adaptador (SQLAlchemyUserRepository por uno nuevo), sin tocar el dominio ni la lógica de aplicación.
 
 
 
-
-
-Crear el consumidor (worker) para auth (app/auth/infrastructure/messaging/start_consumer.py y app/auth/infrastructure/messaging/rabbitmq_consumer.py): Este es el paso crucial. El worker de auth recibirá el RegisterUserCommand, lo procesará con handle_register_user. El handler, a su vez, necesitará publicar un CreateUserCommand al worker de users (puedes reutilizar el publisher de users aquí como dependencia inyectada).
-
-
-
-ARQUITECURA A FUTURO
-En resumen: Sí, hay una repetición aparente, pero tiene un propósito arquitectónico. Para tu entrega, la opción 1 (usar solo CreateUserCommand de users desde auth) es más directa y cumple con el requisito del PDF de manera clara.
-
-
-
-Tienes una pregunta excelente y muy común al implementar estos patrones. Vamos a aclararlo.
 
 Refinamientos Menores:
 Limpiar warnings de Docker Compose (version attribute is obsolete`).
 Asegurar que todos los TODO del código estén resueltos o claramente comentados como pendientes de una próxima iteración.
 
 
-¿Es mejor usar una BD universal/compartida para ambos?
-Respuesta corta: Sí, es exactamente lo que estás haciendo y es la forma correcta. No es un enredo, es el diseño correcto según la Arquitectura Hexagonal y CQRS.
-
-¿Qué está pasando realmente?
 Una sola instancia de base de datos: Tanto users como auth se conectan a la misma base de datos física llamada myapp_db en PostgreSQL (corriendo en el contenedor db).
 DATABASE_URL: postgresql://myapp_user:myapp_password@db:5432/myapp_db (Esta es la misma para ambos contextos).
 Una sola base de datos lógica (myapp_db): Dentro de esa instancia de PostgreSQL, hay una sola base de datos llamada myapp_db.
 Tablas separadas (lógicamente): Lo que separa a users de auth no es la base de datos, sino el espacio de nombres lógico dentro de esa misma base de datos:
 El contexto users crea y usa la tabla users.
 El contexto auth crea y usa la tabla tokens.
-Base compartido de SQLAlchemy: Esta es la clave. Al hacer que auth importe Base desde users.infrastructure.persistence.database, estás asegurando que ambos contextos usen el mismo registro de metadatos (metadata) de SQLAlchemy. Esto permite que Base.metadata.create_all() cree todas las tablas de ambos contextos cuando se llama desde cualquiera de ellos.
-¿Por qué se siente como un enredo?
-Es posible que se sienta así porque:
 
-Comunicación entre contextos: El hecho de que el auth-worker llame directamente al repositorio de users (SQLAlchemyUserRepository) para crear un usuario puede parecer una mezcla. Sin embargo, esto es una forma de implementar la comunicación entre contextos en esta etapa temprana. En una arquitectura aún más desacoplada, auth publicaría un comando CreateUserCommand en la cola de users, y el users-worker lo procesaría. Pero tu solución actual es válida y simplifica el flujo para esta prueba técnica.
-Compartir Base: Importar Base de otro contexto puede parecer extraño. Pero es necesario en este diseño específico porque ambos contextos comparten la misma base de datos y necesitan que sus modelos estén registrados en el mismo metadata para que las tablas se creen correctamente.
-¿Es así según Arquitectura Hexagonal y CQRS?
-Sí, absolutamente.
+Base compartido de SQLAlchemy: Esta es la clave. Al hacer que auth importe Base desde users.infrastructure.persistence.database, estás asegurando que ambos contextos usen el mismo registro de metadatos 
+(metadata) de SQLAlchemy. Esto permite que Base.metadata.create_all() cree todas las tablas de ambos contextos cuando se llama desde cualquiera de ellos.
 
-Arquitectura Hexagonal: Cada contexto (users, auth) tiene su dominio independiente, sus aplicaciones y su infraestructura. La infraestructura incluye adaptadores para la base de datos. El hecho de que compartan la misma BD física no viola la hexagonalidad, porque cada contexto sigue teniendo su propio modelo, repositorio y adaptadores. La BD compartida es solo una implementación de infraestructura.
-CQRS: users maneja comandos (escritura) y auth maneja comandos (escritura, como crear tokens) y consultas (lectura, como validar tokens). La separación de responsabilidades está clara. La BD compartida no afecta esto, ya que las operaciones de lectura y escritura siguen estando claramente definidas (comandos van por RabbitMQ, consultas van directas a la BD).
-Conclusión
-No estás entendiendo mal. Estás implementando correctamente una base de datos lógica compartida (myapp_db) donde cada contexto tiene su propia tabla (users, tokens). Esto es el patrón correcto y común para esta arquitectura cuando los contextos están estrechamente relacionados y comparten la misma base de datos física. La sensación de "enredo" viene de la complejidad inherente de coordinar dos contextos, pero la estructura que has construido es sólida y sigue los principios solicitados.
+Comunicación entre contextos: El hecho de que el auth-worker llame directamente al repositorio de users (SQLAlchemyUserRepository) para crear un usuario puede parecer una mezcla. Sin embargo, esto es una 
+forma de implementar la comunicación entre contextos en esta etapa temprana. En una arquitectura aún más desacoplada, auth publicaría un comando CreateUserCommand en la cola de users, y el users-worker lo procesaría. 
+
+Compartir Base: Importar Base de otro contexto puede parecer extraño. Pero es necesario en este diseño específico porque ambos contextos comparten la misma base de datos y necesitan que sus modelos estén 
+registrados en el mismo metadata para que las tablas se creen correctamente.
 
 
-¿Qué falta para una comunicación basada en eventos más completa?
-Publicación de Eventos de Dominio: Lo que falta es que, una vez que el auth-worker termina de procesar el comando RegisterUserCommand (es decir, crea el usuario y el token), publique un nuevo evento indicando que eso sucedió.
-Por ejemplo: UserRegisteredEvent (conteniendo el ID del usuario, su email, etc.).
-Consumidores de Eventos de Dominio: Luego, podrías tener otros consumidores (incluso en el mismo contexto auth o en un nuevo contexto como notifications) que escuchen el UserRegisteredEvent.
-Por ejemplo: Un notifications-worker que escuche UserRegisteredEvent y envíe un email de bienvenida.
-Esto crearía un sistema donde las acciones generan eventos, y otros servicios reaccionan a esos eventos de forma independiente y desacoplada.
+Arquitectura Hexagonal: Cada contexto (users, auth) tiene su dominio independiente, sus aplicaciones y su infraestructura. La infraestructura incluye adaptadores para la base de datos. 
+
+El hecho de que compartan la misma BD física no viola la hexagonalidad, porque cada contexto sigue teniendo su propio modelo, repositorio y adaptadores. La BD compartida es solo una implementación 
+de infraestructura.
+
+CQRS: users maneja comandos (escritura) y auth maneja comandos (escritura, como crear tokens) y consultas (lectura, como validar tokens). La separación de responsabilidades está clara. 
 
 
+No estás entendiendo mal. Estás implementando correctamente una base de datos lógica compartida (myapp_db) donde cada contexto tiene su propia tabla (users, tokens). Esto es el patrón correcto 
+y común para esta arquitectura cuando los contextos están estrechamente relacionados y comparten la misma base de datos física. La sensación de "enredo" viene de la complejidad inherente de coordinar 
+dos contextos, pero la estructura que has construido es sólida y sigue los principios solicitados.
 
-¿Se basa en compartir modelos de lectura?
-No necesariamente. Compartir modelos de lectura (JOIN directo entre tablas de users y auth) es una técnica para consultas sincrónicas cuando necesitas datos de múltiples contextos que están en la misma BD.
-Comunicación basada en eventos es una técnica para comunicación asíncrona entre contextos, basada en mensajes (eventos) que pasan por una cola (RabbitMQ).
-Son dos enfoques diferentes para resolver problemas de integración:
-JOIN/Modelos compartidos: Para consultas complejas en el momento (sincrónico).
-Eventos/Colas: Para reaccionar a acciones y realizar tareas secundarias (asincrónico).
 
 
 (puertos, adaptadores, aplicación, dominio, infra) where is used ?
 
 
 
-Nos referimos a que, una vez que el auth-worker termina de procesar con éxito un RegisterUserCommand (es decir, crea el usuario en users y el token en auth), publique un nuevo mensaje en una cola de eventos, por ejemplo, UserRegisteredEvent.
-Este UserRegisteredEvent podría ser consumido por otros servicios (incluso potencialmente un notifications-worker que envíe un email de bienvenida).
+¿Por qué tener dos RegisterUserCommand?
+Diferentes Responsabilidades y Perspectivas:
+
+auth.application.commands.RegisterUserCommand:
+Responsabilidad: Iniciar el proceso de registro desde la perspectiva de autenticación.
+¿Qué hace? Este comando representa la intención de "registrar un nuevo usuario para que pueda iniciar sesión". Es el primer paso en el flujo de autenticación.
+¿Dónde se procesa? Se procesa en el contexto auth. Su handler (handle_register_user_for_auth_context) se encarga de coordinar la creación del usuario en users (publicando un CreateUserCommand 
+en la cola de users) y la generación del token inicial en auth.
+
+users.application.commands.CreateUserCommand:
+Responsabilidad: Realizar la creación física del usuario en el sistema desde la perspectiva del gestor de usuarios.
+¿Qué hace? Este comando representa la intención de "crear un nuevo registro de usuario en la base de datos". Es una operación más general y técnica.
+¿Dónde se procesa? Se procesa en el contexto users. Su handler (handle_create_user) se encarga de validar los datos y guardar el usuario en la tabla users.
+
+Separación de Contextos (auth vs users):
+auth: Su mundo gira en torno a quién puede acceder al sistema. Un "registro" aquí implica más que solo crear un usuario: implica crear credenciales, generar tokens, posiblemente enviar emails de bienvenida, etc.
+users: Su mundo gira en torno a la gestión de la información del usuario. "Crear un usuario" aquí es una operación más pura de gestión de datos.
+
+Al tener comandos separados, cada contexto puede evolucionar de forma independiente. Por ejemplo, auth podría añadir un campo preferred_language al RegisterUserCommand sin afectar a users. 
+
+users podría añadir un campo profile_picture_url al CreateUserCommand sin afectar a auth.
+
+Flujo de Comunicación entre Contextos (CQRS + Hexagonal):
+El comando RegisterUserCommand de auth no crea directamente el usuario en la BD de users.
+Su handler publica un CreateUserCommand en la cola user_commands de RabbitMQ.
+El worker de users consume ese CreateUserCommand y ahí sí ejecuta la lógica para crear el registro físico en la tabla users.
+
+Escalabilidad y Reutilización:
+El comando CreateUserCommand de users puede ser utilizado por otros contextos además de auth. Por ejemplo, un contexto admin podría tener un endpoint para crear usuarios manualmente, 
+y también publicaría un CreateUserCommand.
+El comando RegisterUserCommand de auth es específico del flujo de registro público.
+
+Conclusión
+Tener dos comandos RegisterUserCommand/CreateUserCommand es correcto y beneficioso. Refleja una arquitectura bien pensada donde:
+
+Cada contexto tiene su propio lenguaje ubicuo (Ubiquitous Language).
+Las responsabilidades están claramente separadas.
+La comunicación entre contextos es explícita y desacoplada (mediante eventos/comandos en RabbitMQ).
+Cada comando tiene una única responsabilidad clara dentro de su contexto.
+
+
+Eventos:
+¿Dónde los aplicamos?
+RabbitMQ como Broker de Eventos: Aunque técnicamente usamos comandos (CreateUserCommand, RegisterUserCommand, LoginCommand), RabbitMQ actúa como un sistema de mensajería basado en eventos. 
+Publicas un mensaje (comando) en una cola, y otro servicio (worker) lo "escucha" y reacciona a ese evento.
+Publicación de Comandos: Cuando haces POST /api/v1/auth/register, el endpoint publica un RegisterUserCommand en la cola auth_commands. Esto es publicar un evento (aunque sea un evento de tipo comando).
+Consumo de Comandos: El auth-worker consume el RegisterUserCommand de la cola. Esto es reaccionar a un evento.
+Flujo de Trabajo Dirigido por Eventos: El flujo completo (API -> Comando -> RabbitMQ -> Worker -> BD -> API) es un ejemplo clásico de arquitectura dirigida por eventos. Cada paso es una 
+reacción a un evento (mensaje) anterior.
+
+Excepciones:
+¿Dónde las aplicamos?
+En el Modelo de Dominio (User):
+InvalidEmailError: Se lanza cuando se intenta crear un User con un email inválido.
+ValueError: Se lanza cuando el nombre está vacío.
+En el Handler de Aplicación (handle_create_user, handle_register_user_for_auth_context, handle_login_user):
+ValueError: Se relanza si hay un error en la validación del modelo de dominio.
+RuntimeError: Se lanza (y se relanza) para envolver errores de infraestructura (problemas de BD, problemas de hashing, etc.).
+En el Repositorio (SQLAlchemyUserRepository, SQLAlchemyTokenRepository):
+RuntimeError: Se lanza cuando hay errores al interactuar con la base de datos (guardar, buscar, etc.).
+En la API (routes.py):
+HTTPException: Se lanza para devolver códigos de estado HTTP específicos (400 Bad Request, 401 Unauthorized, 404 Not Found, 500 Internal Server Error) al cliente.
+En el Consumidor (rabbitmq_consumer.py):
+RuntimeError: Se capturan y manejan errores del handler o del procesamiento del mensaje.
+Se envían ACK o NACK a RabbitMQ dependiendo del resultado, lo cual es parte del manejo de errores en sistemas basados en mensajes.
+
+
+Separación de Responsabilidades:
+Cada worker tiene una única responsabilidad clara:
+worker (de users): Procesa comandos relacionados con la gestión del usuario (CreateUserCommand).
+auth-worker (de auth): Procesa comandos relacionados con la autenticación (RegisterUserCommand, LoginCommand).
+Esto hace que cada worker sea más fácil de entender, mantener y escalar.
+
+Escalabilidad Independiente:
+Si, por ejemplo, el contexto auth recibe muchas más solicitudes de login/registro que el contexto users, puedes escalar horizontalmente solo el auth-worker (levantar más instancias) 
+sin afectar al worker de users.
+Esto es imposible si todo se procesa en un solo worker.
+
+Tolerancia a Fallos:
+Si el auth-worker falla, el worker de users sigue funcionando. Los comandos de users se acumulan en la cola user_commands y se procesarán cuando el worker de users se recupere.
+Esto mejora la resiliencia del sistema.
+
+Desacoplamiento:
+Cada contexto tiene su propio worker. Esto refuerza el desacoplamiento entre users y auth. Un cambio en el auth-worker no debería afectar al worker de users.
+Cumple con Arquitectura Hexagonal y Bundle-contexts:
+Cada contexto (users, auth) tiene su propia infraestructura (incluyendo su worker). Esto es exactamente lo que pide el PDF con "Bundle-contexts".
+
+
+
+Separación de Preocupaciones: 
+Al tener contextos separados, puedes evolucionar users (gestión de perfiles, datos personales) y auth (gestión de sesiones, tokens, 2FA) de forma independiente
+Esta duplicación no es un error, sino una decisión arquitectónica correcta que refleja que cada contexto tiene su propio "lenguaje ubicuo" (Ubiquitous Language). 
+Register y Create pueden tener significados ligeramente diferentes en cada contexto, y tener comandos separados permite evolucionarlos de forma independiente.
+
+
+Diferentes Responsabilidades y Contextos:
+auth.application.commands.RegisterUserCommand:
+Responsabilidad: Iniciar el proceso de registro desde la perspectiva de autenticación.
+¿Dónde se usa? En el endpoint POST /api/v1/auth/register.
+¿Qué hace? Coordina la creación del usuario en users (mediante un mensaje a RabbitMQ) y la generación del token inicial en auth.
+users.application.commands.CreateUserCommand:
+Responsabilidad: Realizar la creación física del usuario en la base de datos users.
+¿Dónde se usa? En el worker de users que consume mensajes de la cola user_commands.
+¿Qué hace? Valida los datos y guarda el usuario en la tabla users.
+Lenguaje Ubicuo (Ubiquitous Language):
+En el contexto de auth, la acción se llama Register (registrar).
+En el contexto de users, la acción se llama Create (crear).
+Aunque técnicamente hagan lo "mismo" (crear un usuario), el significado y la intención son diferentes en cada contexto. Tener comandos separados refuerza este lenguaje específico del dominio.
+Escalabilidad y Flexibilidad:
+auth.RegisterUserCommand podría evolucionar para incluir datos específicos del proceso de registro (por ejemplo, captcha_token, referral_code).
+users.CreateUserCommand podría evolucionar para incluir datos técnicos o de auditoría (por ejemplo, created_by_admin, source_ip).
+Si ambos estuvieran en un solo comando, cambiar uno afectaría al otro. Al mantenerlos separados, puedes evolucionarlos de forma independiente.
+Comunicación entre Contextos:
+El flujo es: auth (endpoint) -> auth.RegisterUserCommand -> RabbitMQ -> users (worker) -> users.CreateUserCommand -> BD.
+Esta comunicación se hace mediante mensajes. El auth-worker publica un CreateUserCommand en la cola user_commands para que el users-worker lo procese. Esto mantiene los contextos desacoplados.
+
 

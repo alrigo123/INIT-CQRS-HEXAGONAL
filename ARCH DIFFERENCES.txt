@@ -1,5 +1,4 @@
 USERS
-
 # app/users/application/commands/
 # - UpdateUserProfileCommand: Actualizar información como dirección, teléfono, avatar.
 # - ChangeUserEmailCommand: Proceso seguro para cambiar el email (requiere verificación).
@@ -34,8 +33,7 @@ USERS
 #     created_at: datetime
 
 
-auth
-
+AUTH
 # app/auth/application/commands/
 # - LoginCommand: Autenticar usuario y generar tokens.
 # - LogoutCommand: Invalidar un token de acceso específico.

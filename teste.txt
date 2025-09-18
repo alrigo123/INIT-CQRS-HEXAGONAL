@@ -1,7 +1,4 @@
-eN ENVIROMETN
-(venv) PS D:\ALL PROJECTS\JOB TEST TECH\INIT-CQRS-HEXAGONAL> pytest --version
-pytest 7.4.4
-(venv) PS D:\ALL PROJECTS\JOB TEST TECH\INIT-CQRS-HEXAGONAL> pytest tests/users/domain/test_user_model.py
+
 
 collected 5 items
 tests\users\domain\test_user_model.py ..... [100%]
@@ -12,10 +9,6 @@ indica que:
 collected 5 items: Se encontraron y cargaron 5 pruebas (métodos que comienzan con test_) en el archivo test_user_model.py.
 ..... [100%]: Las 5 pruebas se ejecutaron correctamente y todas pasaron.
 5 passed in 0.10s: El resultado final es que todas las pruebas pasaron en solo 0.10 segundos.
-¿Está bien?
-Sí, absolutamente. Esto significa que tu implementación de la entidad User en la capa de dominio (app/users/domain/models.py) está correcta y cumple con las reglas de negocio que definiste (validación de email, normalización a minúsculas, validación del nombre).
-
-
 
 
 
@@ -26,62 +19,14 @@ El PDF exige una cobertura del 80% en la capa de dominio, no del 100%. Esto es u
 
 No todo el código necesita ser testeado con el mismo nivel de detalle:
 El dominio contiene las reglas de negocio más críticas (como validar un email). Estas deben tener una cobertura muy alta.
-Algunos métodos pueden ser tan simples o triviales que su pruebas son redundantes. Por ejemplo, un método getter (@property) que solo devuelve un atributo podría no necesitar una prueba explícita si ya está cubierto por otras pruebas.
+
+Algunos métodos pueden ser tan simples o triviales que su pruebas son redundantes. Por ejemplo, un método getter (@property) 
+que solo devuelve un atributo podría no necesitar una prueba explícita si ya está cubierto por otras pruebas.
+
 Métodos que manejan errores o excepciones específicas pueden ser difíciles de probar exhaustivamente sin complicar demasiado las pruebas.
-La cobertura del 80% es un objetivo realista y útil:
-Es un umbral alto que asegura que la mayor parte de la lógica crítica esté cubierta.
-Permite enfocarse en las partes más importantes del código sin perder tiempo en detalles menores.
-Es un indicador de calidad sólido. Un proyecto con 80% de cobertura en dominio es mucho más robusto que uno con 50%.
+
 ¿Qué implica el %?
 El porcentaje de cobertura mide cuánto del código fuente ha sido ejecutado por las pruebas.
 Se calcula sobre líneas de código (line coverage) o instrucciones (statement coverage).
-En tu caso, el 80% se refiere a que al menos el 80% de las líneas de código dentro de los archivos de la capa de dominio (por ejemplo, app/users/domain/models.py, app/users/domain/repositories.py) deben haber sido ejecutadas por tus pruebas unitarias.
-¿Cómo verificar la cobertura real?
-Para saber exactamente cuánto has cubierto, puedes usar la herramienta coverage.py. Aunque pytest puede mostrar una estimación, coverage.py da un informe detallado.
-
-Instalación:
-
-bash
-
-
-1
-pip install coverage
-Ejecutar y generar un informe:
-
-bash
-
-
-1
-2
-3
-4
-5
-6
-# Ejecuta las pruebas y genera un informe de cobertura
-coverage run -m pytest tests/users/domain/
-# Luego, genera un informe en la consola
-coverage report
-
-# Ejecuta las pruebas de 'users' y mide la cobertura
-# Incluimos 'domain' y 'application' porque esas son las que contribuyen al 80%
-coverage run --source=app/users/domain,app/users/application -m pytest tests/users/domain/ tests/users/application/
-
-
-# O genera un informe HTML para verlo en el navegador
-coverage html
-Este informe te dirá exactamente qué líneas de código están cubiertas y cuáles no.
-
-Con esto, has completado una parte fundamental de los requisitos. Ahora podemos seguir con el contexto auth o con otras pruebas. ¿Te gustaría que creemos el contexto auth siguiendo el mismo patrón?
-
-
-
-para todos
-
-coverage run -m pytest
-
-coverage report
-
-coverage html
-
-
-coverage report --include="app/*/domain/*"  (solo dominio)
+En tu caso, el 80% se refiere a que al menos el 80% de las líneas de código dentro de los archivos de la capa de dominio 
+(por ejemplo, app/users/domain/models.py, app/users/domain/repositories.py) deben haber sido ejecutadas por tus pruebas unitarias.
