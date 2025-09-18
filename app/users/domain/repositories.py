@@ -1,14 +1,25 @@
 # app/users/domain/repositories.py
 from abc import ABC, abstractmethod
+from typing import Optional
+
 # Importamos la entidad de dominio User
 from .models import User
 
 class UserRepository(ABC):
     """
     Interfaz abstracta para el repositorio de Usuarios.
-    Define los métodos que cualquier implementación de persistencia de usuarios
-    debe proporcionar. Esta interfaz pertenece al dominio y no debe tener
-    dependencias externas.
+    
+    Esta es una ABSTRACCIÓN que define qué operaciones de persistencia
+    necesita el dominio de usuarios, sin especificar cómo se implementan.
+    
+    PATRÓN DE DISEÑO: Repository Pattern (Patrón Repositorio)
+    PATRÓN DE DISEÑO: Interface Segregation (Segregación de Interfaces)
+    
+    ARQUITECTURA: Puerto secundario en Arquitectura Hexagonal
+    El dominio define la interfaz, la infraestructura la implementa.
+    
+    PRINCIPIO SOLID: Inversión de Dependencias
+    El dominio depende de abstracciones, no de implementaciones concretas.
     """
 
     @abstractmethod
@@ -22,11 +33,13 @@ class UserRepository(ABC):
         Raises:
             # Puede lanzar excepciones específicas definidas en el dominio
             # o dejárselas a la implementación concreta.
+            
+        MEJORA SUGERIDA: Definir excepciones específicas de dominio para errores de persistencia
         """
         pass
 
     @abstractmethod
-    def get_by_id(self, user_id: str) -> User | None: # Usamos Union[User, None] si < Python 3.10
+    def get_by_id(self, user_id: str) -> Optional[User]:
         """
         Obtiene un usuario por su ID.
 
@@ -35,6 +48,8 @@ class UserRepository(ABC):
 
         Returns:
             User | None: La instancia del User si se encuentra, None en caso contrario.
+            
+        MEJORA SUGERIDA: Considerar sobrecargas para diferentes tipos de ID
         """
         pass
 
@@ -50,3 +65,10 @@ class UserRepository(ABC):
 # 3. Dependencia del dominio: Solo importa `User` desde el mismo dominio.
 # 4. Tipo de retorno `User | None`: Indica que la operación puede no encontrar el usuario.
 # 5. Sin lógica de implementación: Este archivo no sabe ni cómo se conecta a una BD.
+
+# Rol en la Arquitectura
+# Puerto secundario: Interfaz que el dominio define para interactuar con infraestructura
+# Inversión de dependencias: El dominio no depende de implementaciones concretas
+# Contrato claro: Define qué operaciones de persistencia necesita el dominio
+# Abstracción: Oculta los detalles de cómo se implementa la persistencia
+# Lenguaje ubicuo: Usa términos del dominio en la definición de operaciones

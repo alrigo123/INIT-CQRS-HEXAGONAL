@@ -1,27 +1,34 @@
 # app/users/application/commands/handlers.py
 import uuid
 from typing import Callable
+from typing import Optional  # Para tipos opcionales
+
 # Importamos el comando que vamos a manejar
 from .create_user_command import CreateUserCommand
-# Importamos la entidad de dominio y el repositorio (interfaz)
-from ...domain.models import User # , InvalidEmailError, WeakPasswordError
-from ...domain.repositories import UserRepository
 
-# Para hashear la contraseña (esto requerirá una dependencia, lo manejaremos con inyección)
-# En una implementación real, este servicio podría ser inyectado
-# from ...domain.services import PasswordHasher
+# Importamos la entidad de dominio y el repositorio (interfaz)
+from ...domain.models import User
+from ...domain.repositories import UserRepository
 
 def handle_create_user(
     command: CreateUserCommand,
     user_repository: UserRepository,
-    # Ejemplo de inyección de dependencia para un servicio
-    # password_hasher: PasswordHasher 
-    # O una función simple para hashear
     hash_password_fn: Callable[[str], str]
 ) -> str:
     """
     Handler para el comando CreateUserCommand.
-    Procesa la solicitud de creación de un nuevo usuario.
+    
+    Este handler ORQUESTA la ejecución de la operación de creación de usuario.
+    Coordina entre el comando de entrada, las dependencias y el dominio.
+    
+    PATRÓN DE DISEÑO: Command Handler (Manejador de Comandos)
+    PATRÓN DE DISEÑO: Orchestration Pattern (Patrón de Orquestación)
+    
+    ARQUITECTURA: Parte de la capa de Aplicación en CQRS
+    Procesa comandos y coordina la lógica de aplicación.
+    
+    INYECCIÓN DE DEPENDENCIAS: Recibe todas las dependencias necesarias
+    Esto facilita testing y separación de concerns.
 
     Este handler encapsula la lógica de aplicación:
     1. Toma el comando con los datos del usuario.
@@ -39,14 +46,17 @@ def handle_create_user(
         str: El ID del usuario creado.
 
     Raises:
-        # Puede lanzar excepciones definidas en el dominio o aplicación
-        # InvalidEmailError: Si el email del comando no es válido.
-        # WeakPasswordError: Si la contraseña no cumple con los criterios.
-        # Otras excepciones de infraestructura (por ejemplo, si el email ya existe).
+        ValueError: Si hay errores en validación o creación de entidad.
+        RuntimeError: Si hay errores de persistencia.
+        
+    MEJORA SUGERIDA: Definir excepciones específicas de aplicación
+    MEJORA SUGERIDA: Agregar logging para auditoría
     """
+    
     # 1. (Opcional) Validaciones adicionales a nivel de aplicación
-    #    Las básicas ya se harán en el modelo de dominio al crear el User.
-    #    Aquí podrías validar unicidad de email, etc., si es necesario antes de crear.
+    # Las básicas ya se harán en el modelo de dominio al crear el User.
+    # Aquí podrías validar unicidad de email, etc., si es necesario antes de crear.
+    # MEJORA SUGERIDA: Validar unicidad de email antes de crear la entidad
 
     # 2. Hashear la contraseña
     # En una implementación más robusta, podrías inyectar un servicio PasswordHasher
@@ -61,6 +71,7 @@ def handle_create_user(
 
     # 3. Generar un ID único para el nuevo usuario
     # Usamos uuid4 para generar un ID único. En la BD podría ser un UUID o auto-incremental.
+    # Este ID se genera en la capa de aplicación, no en el dominio
     user_id = str(uuid.uuid4())
 
     # 4. Crear la entidad de dominio User
@@ -72,7 +83,7 @@ def handle_create_user(
             email=command.email,
             hashed_password=hashed_password
         )
-    except Exception as e: # Captura excepciones del dominio (InvalidEmailError, etc.)
+    except Exception as e:  # Captura excepciones del dominio (InvalidEmailError, etc.)
         # Podrías relanzar la excepción o envolverla en una excepción de aplicación
         raise ValueError(f"Error al crear la entidad de usuario: {e}")
 
@@ -86,6 +97,7 @@ def handle_create_user(
         raise RuntimeError(f"Error al guardar el usuario en el repositorio: {e}")
 
     # 6. Retornar el ID del usuario creado
+    # El ID generado se devuelve para que el llamador pueda usarlo
     return user_id
 
 # --- Notas sobre la implementación ---
@@ -101,3 +113,11 @@ def handle_create_user(
 #    Aquí se pueden hacer validaciones adicionales a nivel de aplicación si es necesario.
 # 6. Independencia: Este handler no importa módulos de infraestructura directamente.
 #    Depende de abstracciones (UserRepository) que se resuelven en la capa de infraestructura.
+
+# Rol en la Arquitectura
+# Handler CQRS: Procesa comandos y orquesta la lógica de aplicación
+# Orquestación: Coordina entre comandos, dominio e infraestructura
+# Inyección de dependencias: Recibe colaboradores externos
+# Manejo de cross-cutting concerns: Hashing, generación de IDs
+# Traducción: Convierte intenciones en acciones concretas
+# Lógica de aplicación: Coordina flujo sin incluir lógica de negocio del dominio

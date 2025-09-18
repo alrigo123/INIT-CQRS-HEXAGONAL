@@ -3,49 +3,72 @@ import json
 import pika
 import traceback
 import time
-import os # Para obtener variables de entorno
+import os
+from typing import Dict, Any
 
 # Importamos el comando que vamos a consumir
+# Este es el comando que este consumidor sabe procesar
 from ...application.commands.create_user_command import CreateUserCommand
 
 # Importamos el handler que procesará el comando
-# Nota: En una implementación más avanzada, esto podría ser inyectado.
+# Este es el handler de aplicación que ejecutará la lógica de negocio
 from ...application.commands.handlers import handle_create_user
 
 # Importamos dependencias necesarias para el handler
-# (En una implementación real, estas vendrían de un sistema de inyección de dependencias)
+# Estas son las implementaciones concretas de infraestructura que el handler necesita
 from ...infrastructure.persistence.database import SessionLocal, create_tables
 from ...infrastructure.persistence.repositories import SQLAlchemyUserRepository
 
-# Para simular el hashing de contraseña (en una implementación real, usar una librería como passlib)
+# Para simular el hashing de contraseña (en una implementación real, usar una librería como bcrypt)
+# ADVERTENCIA: hashlib no es seguro para passwords en producción
 import hashlib
 
+# Para manejar errores específicos de conexión de RabbitMQ
 from pika.exceptions import AMQPConnectionError
 
 # --- Configuración de RabbitMQ ---
 # Alineada con el publisher y docker-compose.yml
 # Se recomienda usar variables de entorno en lugar de valores fijos
+# MEJORA SUGERIDA: Mover a variables de entorno para diferentes ambientes
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 USER_COMMANDS_QUEUE = "user_commands"
-
 
 def dummy_hash_password(password: str) -> str:
     """
     Función de ejemplo para hashear una contraseña.
-    En una implementación real, usar una librería segura como passlib.
+    
+    ADVERTENCIA DE SEGURIDAD: Esta implementación no es segura para producción.
+    En una implementación real, usar una librería criptográfica como bcrypt o argon2.
+    
+    Args:
+        password (str): Contraseña en texto plano
+        
+    Returns:
+        str: Contraseña "hasheada" (no realmente segura)
+        
+    MEJORA SUGERIDA: Reemplazar con bcrypt o passlib para hashing seguro
     """
     # Usamos hashlib para una simulación básica. No es seguro para producción.
+    # hashlib.sha256 es vulnerable a ataques de fuerza bruta
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
-
-def process_create_user_command(command_data: dict):
+def process_create_user_command(command_data: Dict[str, Any]):
     """
     Procesa un comando CreateUserCommand deserializado.
+    
     Esta función orquesta la obtención de dependencias y la ejecución del handler.
+    Es el punto de entrada para procesar comandos recibidos de la cola.
+    
+    PATRÓN DE DISEÑO: Orquestador (Orchestrator Pattern)
+    Este método coordina la creación de dependencias y ejecución del handler.
+
+    Args:
+        command_data (dict): Datos del comando deserializados desde JSON
     """
     print(f"[.] Processing CreateUserCommand for '{command_data['name']}'")
 
     # 1. Crear el objeto comando desde los datos deserializados
+    # Reconstruimos el comando del dominio a partir de los datos recibidos
     command = CreateUserCommand(
         name=command_data["name"],
         email=command_data["email"],
@@ -54,80 +77,113 @@ def process_create_user_command(command_data: dict):
 
     # 2. Obtener dependencias necesarias para el handler
     # En una arquitectura más avanzada, esto vendría de un contenedor de inyección de dependencias.
+    # Aquí creamos las dependencias manualmente siguiendo el principio de inversión de dependencias
+    
+    # Obtener una sesión de base de datos del pool
     db_session = SessionLocal()
+    
+    # Crear el repositorio con la sesión (adaptador concreto de persistencia)
     user_repository = SQLAlchemyUserRepository(db_session)
-    hash_password_fn = dummy_hash_password  # O una función real de hashing
+    
+    # Función para hashear contraseñas (adaptador concreto de seguridad)
+    # MEJORA SUGERIDA: Usar implementación real de hashing seguro
+    hash_password_fn = dummy_hash_password
 
     try:
         # 3. Invocar al handler de aplicación
         # Pasamos el comando y las dependencias inyectadas
+        # Este es el punto donde se ejecuta la lógica de negocio
         user_id = handle_create_user(command, user_repository, hash_password_fn)
         print(f"[.] Successfully created user with ID: {user_id}")
     except Exception as e:
         # Manejar errores del handler (validaciones, problemas de BD, etc.)
         print(f"[!] Error processing CreateUserCommand: {e}")
-        traceback.print_exc()  # Para debugging
+        # Para debugging detallado en desarrollo
+        traceback.print_exc()
         # En un sistema real, podrías reencolar el mensaje, enviarlo a una cola de dead-letter, etc.
+        # MEJORA SUGERIDA: Implementar dead-letter exchanges para manejo de errores
     finally:
         # 4. Cerrar la sesión de la base de datos
+        # Es crucial cerrar sesiones para liberar conexiones del pool
         db_session.close()
 
-
-# --- Importante: La definición de 'callback' debe estar ANTES de 'start_consuming' ---
 def callback(ch, method, properties, body):
     """
     Función callback que se ejecuta cada vez que se recibe un mensaje de RabbitMQ.
     
+    Este es el punto de entrada principal para el consumidor de mensajes.
+    Se ejecuta automáticamente cuando RabbitMQ entrega un mensaje a este consumidor.
+    
+    PATRÓN DE DISEÑO: Callback/Event Handler
+    Se registra como manejador de eventos para mensajes de RabbitMQ.
+
     Args:
-        ch: Canal de comunicación.
-        method: Información sobre el método de entrega.
-        properties: Propiedades del mensaje.
-        body: Cuerpo del mensaje (los datos).
+        ch: Canal de comunicación con RabbitMQ
+        method: Información sobre el método de entrega del mensaje
+        properties: Propiedades del mensaje (headers, delivery mode, etc.)
+        body: Cuerpo del mensaje (los datos en bytes)
     """
     try:
         # 1. Decodificar el cuerpo del mensaje (de bytes a string)
+        # Los mensajes llegan como bytes y deben convertirse a string para procesar
         message_str = body.decode('utf-8')
         print(f"[x] Received raw message: {message_str}")
 
         # 2. Deserializar el mensaje de JSON a un diccionario de Python
+        # Convertimos el JSON recibido en estructura de datos Python
         message_data = json.loads(message_str)
 
         # 3. Determinar el tipo de comando y procesarlo
+        # Extraemos el tipo de comando y los datos del mensaje
         command_type = message_data.get("type")
         command_data = message_data.get("data")
 
-        if command_type == "CreateUserCommand" and command_data:
-            # Corrección: pasar command_data, no command_
+        # Procesamos solo los comandos que conocemos
+        if command_type == "CreateUserCommand":
+            # Corrección: pasar command_data, no command_ (había un error tipográfico)
             process_create_user_command(command_data)
         else:
-            print(f"[!] Unknown command type or missing data: {command_type}")
+            # Manejar comandos desconocidos o mensajes mal formados
+            print(f"[!] Unknown command type or missing  {command_type}")
+            # MEJORA SUGERIDA: Enviar a dead-letter queue para análisis posterior
 
         # 4. Enviar ACK manualmente para confirmar que el mensaje fue procesado
         # Esto es importante para la resiliencia de RabbitMQ
+        # Sin ACK, el mensaje se reenviaría si este consumidor falla
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     except json.JSONDecodeError as e:
+        # Manejar errores de deserialización (JSON mal formado)
         print(f"[!] Failed to decode JSON: {e}")
         # Es importante rechazar (reject) o enviar a una cola de dead-letter mensajes no válidos
+        # requeue=False evita que el mensaje se reenvíe infinitamente
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+        # MEJORA SUGERIDA: Implementar dead-letter exchange para mensajes inválidos
     except Exception as e:
+        # Manejar cualquier otro error inesperado
         print(f"[!] Error in callback: {e}")
-        traceback.print_exc()
-        # Rechazar el mensaje. requeue=False lo manda a una cola de dead-letter si está configurada.
+        traceback.print_exc()  # Para debugging
+        # Rechazar el mensaje. requeue=False lo manda a dead-letter si está configurada
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-
 
 def start_consuming():
     """
     Inicia el consumidor de comandos de RabbitMQ.
-    Se conecta a la cola y comienza a escuchar mensajes.
+    
+    Este método configura y arranca el bucle principal de consumo de mensajes.
+    Es el punto de entrada para ejecutar este worker como proceso independiente.
+    
+    PATRÓN DE DISEÑO: Worker Pattern
+    Se ejecuta como proceso independiente que consume mensajes continuamente.
     """
     # Asegurarse de que las tablas de la BD existen
+    # Esto es útil para asegurar que la infraestructura esté lista
     create_tables()
 
     # --- Nueva lógica de conexión con reintentos ---
-    max_retries = 5
-    retry_delay = 5  # segundos
+    # Implementamos resiliencia con reintentos de conexión
+    max_retries = 5  # Número máximo de intentos de conexión
+    retry_delay = 5  # Segundos entre reintentos
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -154,22 +210,29 @@ def start_consuming():
             raise  # Relanzar cualquier otro error inesperado
 
     # 2. Declarar la cola (por si acaso el publisher aún no la ha creado)
+    # Aseguramos que la cola exista antes de consumir mensajes
     channel.queue_declare(queue=USER_COMMANDS_QUEUE, durable=True)
 
     # 3. Configurar la calidad de servicio
+    # prefetch_count=1 limita a 1 mensaje no confirmado por consumidor
+    # Esto evita que un consumidor se sobrecargue con mensajes
     channel.basic_qos(prefetch_count=1)
 
     # 4. Configurar el consumidor
-    # Ahora 'callback' está definido antes, por lo que esta línea funcionará
+    # Registramos nuestra función callback para manejar mensajes entrantes
     channel.basic_consume(
-        queue=USER_COMMANDS_QUEUE, on_message_callback=callback, auto_ack=False
+        queue=USER_COMMANDS_QUEUE, 
+        on_message_callback=callback, 
+        auto_ack=False  # Desactivamos auto-ack para control manual
     )
 
     print("[*] Waiting for messages. To exit press CTRL+C")
     try:
         # 5. Comenzar a consumir mensajes
+        # Este método bloquea y continúa hasta que se interrumpa
         channel.start_consuming()
     except KeyboardInterrupt:
+        # Manejar interrupción manual (Ctrl+C)
         print("[-] Stopping consumer...")
         channel.stop_consuming()
         connection.close()
@@ -198,3 +261,11 @@ def start_consuming():
 #    de `process_create_user_command`. En una arquitectura avanzada, se usaría un contenedor DI.
 # 10. Manejo de Errores: Se capturan y manejan errores de deserialización y procesamiento.
 # 11. Proceso Independiente: Este script está diseñado para ejecutarse como un worker separado.
+
+# Rol en la Arquitectura
+# Adaptador de mensajería: Consume comandos de colas y los procesa
+# Deserialización: Convierte mensajes JSON a comandos del dominio
+# Orquestación: Coordina ejecución de handlers con sus dependencias
+# Resiliencia: Maneja reconexiones y errores de procesamiento
+# Implementación CQRS: Procesa comandos de manera asíncrona
+# Worker independiente: Se ejecuta como proceso separado del API

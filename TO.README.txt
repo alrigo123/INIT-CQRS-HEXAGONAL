@@ -257,3 +257,63 @@ El flujo es: auth (endpoint) -> auth.RegisterUserCommand -> RabbitMQ -> users (w
 Esta comunicación se hace mediante mensajes. El auth-worker publica un CreateUserCommand en la cola user_commands para que el users-worker lo procese. Esto mantiene los contextos desacoplados.
 
 
+
+
+Separación de Responsabilidades (SRP - Single Responsibility Principle):
+LoginCommand y su handler (handle_login_user): Su única responsabilidad es verificar las credenciales de un usuario. Si son válidas, genera un nuevo token de acceso y lo guarda (por ejemplo, en la tabla tokens).
+ValidateTokenQuery y su handler (handle_validate_token): Su única responsabilidad es verificar si un token es válido (existe y no ha expirado) y obtener información del usuario asociado.
+¿Qué se rompería si los mezclas?
+Romperías SRP: Tendrías una función o comando que hace dos cosas diferentes: validar credenciales y validar tokens. Esto hace que el código sea más difícil de entender, mantener y probar.
+Dificultad de Reutilización: Si quisieras validar un token sin haber hecho login (por ejemplo, en un endpoint de "refresh token"), tendrías que "reusar" parte del código del login, lo cual es confuso.
+Acoplamiento: El código de login quedaría atado al código de validación de tokens, y viceversa. Cambiar uno podría afectar al otro.
+Testing: Sería más difícil escribir pruebas unitarias específicas para "validar credenciales" y "validar tokens" por separado.
+
+
+¿Por qué empezamos por el Dominio?
+La Arquitectura Hexagonal dicta que el dominio (las reglas de negocio centrales) debe ser independiente de cualquier framework, base de datos o mecanismo externo. Es el corazón de la aplicación. Construirlo primero asegura que nuestra lógica de negocio no esté acoplada a detalles de infraestructura desde el principio.
+
+¿Qué vamos a crear ahora?
+
+Vamos a crear el modelo de dominio para un User. Este será un objeto Python simple que representa las propiedades y posiblemente algunas reglas básicas de un usuario, sin depender de SQLAlchemy, FastAPI ni RabbitMQ.
+
+
+¿Qué es?: Es la verdadera esencia del concepto "Usuario" para tu aplicación. Define qué es un usuario y qué reglas lo gobiernan (como validar su email).
+¿Dónde vive?: En la capa de Dominio.
+¿Dependencias?: Ninguna. No sabe ni que existe una base de datos, ni cómo se guarda. Es código Python puro.
+¿Para qué sirve?: Contiene la lógica de negocio central. Es el núcleo que todas las otras capas (Aplicación, Infraestructura) van a usar y respetar.
+
+
+Query: Operaciones de lectura con lógica de negocio compleja que deben ser procesadas por un handler en la capa de aplicación.
+Consulta Directa: Operaciones de lectura simples que solo requieren acceder a la base de datos. Se hacen directamente desde el endpoint API
+
+
+¿Qué falta para una comunicación basada en eventos más completa?
+Publicación de Eventos de Dominio: Lo que falta es que, una vez que el auth-worker termina de procesar el comando RegisterUserCommand (es decir, crea el usuario y el token), publique un nuevo 
+evento indicando que eso sucedió.
+Por ejemplo: UserRegisteredEvent (conteniendo el ID del usuario, su email, etc.).
+Consumidores de Eventos de Dominio: Luego, podrías tener otros consumidores (incluso en el mismo contexto auth o en un nuevo contexto como notifications) que escuchen el UserRegisteredEvent.
+Por ejemplo: Un notifications-worker que escuche UserRegisteredEvent y envíe un email de bienvenida.
+Esto crearía un sistema donde las acciones generan eventos, y otros servicios reaccionan a esos eventos de forma independiente y desacoplada.
+Nos referimos a que, una vez que el auth-worker termina de procesar con éxito un RegisterUserCommand (es decir, crea el usuario en users y el token en auth), publique un nuevo mensaje en una 
+cola de eventos, por ejemplo, UserRegisteredEvent.
+Este UserRegisteredEvent podría ser consumido por otros servicios (incluso potencialmente un notifications-worker que envíe un email de bienvenida).
+
+
+auth.application.commands.RegisterUserCommand:
+Contexto: auth (Autenticación).
+Propósito: "Registrar un nuevo usuario para que pueda iniciar sesión".
+Funciones/Responsabilidades:
+Coordinar la creación del usuario en el contexto users.
+Generar y guardar el primer token de acceso para ese usuario.
+(En el futuro) Enviar email de bienvenida.
+(En el futuro) Manejar flujos de registro más complejos (OAuth, invitaciones, etc.).
+En tu implementación: Publica un CreateUserCommand en RabbitMQ para users y luego crea el token en auth.
+users.application.commands.CreateUserCommand:
+Contexto: users (Gestión de Usuarios).
+Propósito: "Crear un nuevo registro de usuario en el sistema".
+Funciones/Responsabilidades:
+Validar los datos del usuario (nombre, email).
+Hashear la contraseña.
+Guardar el usuario en la base de datos users.
+(En el futuro) Aplicar políticas de unicidad de email/nombre de usuario.
+En tu implementación: Es consumido por el worker de users y crea directamente el registro en la BD.

@@ -1,24 +1,27 @@
-# app/auth/application/commands/register_user_command.py
+# COMMAND
 from dataclasses import dataclass
+
 
 @dataclass(frozen=True)
 class RegisterUserCommand:
     """
     Comando para registrar un nuevo usuario en el contexto de autenticación.
-    Este comando encapsula los datos necesarios para la operación de registro.
-    Es inmutable y se puede serializar fácilmente.
-    
-    Atributos:
-        name (str): El nombre del usuario.
-        email (str): El correo electrónico del usuario.
-        password (str): La contraseña en texto plano del usuario.
+
+    - Inmutable
+    - Solo datos necesarios para registro
+    - Representa la intención de crear una nueva cuenta.
+
+    Responsabilidad:
+    - Transportar datos de registro desde interfaz hasta handler
+    - Mantener separación de contextos (auth vs users) (Bounded Contexts)
     """
+
     name: str
     email: str
-    password: str
+    password: str # Contraseña en texto plano
 
-# --- Notas sobre la implementación ---
-# 1. `@dataclass(frozen=True)`: Hace que el objeto sea inmutable.
-# 2. Atributos simples: Solo contiene los datos necesarios.
-# 3. Contraseña en texto plano: El comando lleva la contraseña tal como se recibe.
-# 4. Independiente: Pertenece a la capa de Aplicación de `auth`.
+
+# --- Notas importantes ---
+# 1. Contexto separado: Aunque hay usuarios, auth tiene su propio contexto
+# 2. Contraseña en texto plano: El handler se encarga de hashearla
+# 3. Independiente: Pertenece a la capa de Aplicación de `auth`.
