@@ -37,8 +37,6 @@ from ...domain.models import Token
 # Importamos el comando de login
 from ...application.commands.login_command import LoginCommand
 
-# *** ELIMINAR ESTA FUNCIÓN ***
-# def handle_register_user_for_auth_context(...): ...
 
 def handle_login_user(
     command: LoginCommand,
