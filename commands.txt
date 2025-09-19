@@ -57,3 +57,8 @@ coverage run --source=app/users/domain,app/auth/domain -m pytest tests/users/dom
 
 coverage report
 coverage html
+
+
+
+coverage run --source=. -m pytest
+

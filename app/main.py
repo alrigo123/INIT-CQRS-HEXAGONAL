@@ -1,45 +1,27 @@
-# app/main.py
+# APP
 from fastapi import FastAPI
-# Importamos el router de users v1
+
+# ROUTES
 from .users.infrastructure.api.v1.routes import router as users_router
+from .auth.infrastructure.api.v1.routes import router as auth_router
+
 # Importamos la función para crear tablas de la BD
 from .users.infrastructure.persistence.database import create_tables
 
 
-# Importamos el router de auth v1
-from .auth.infrastructure.api.v1.routes import router as auth_router
-
 # --- Creación de la instancia de la aplicación ---
-app = FastAPI(
-    title="Backend Hexagonal CQRS API",
-    description="API de ejemplo siguiendo Arquitectura Hexagonal y CQRS con FastAPI, SQLAlchemy y RabbitMQ.",
-    version="1.0.0",
-    # openapi_url="/api/v1/openapi.json" # Puedes personalizar la ruta de la especificación OpenAPI
-)
+app = FastAPI(title="INIT Backend Hexagonal CQRS")
 
 # --- Eventos de Ciclo de Vida ---
-
 @app.on_event("startup")
 async def startup_event():
     """
     Evento que se ejecuta al iniciar la aplicación.
-    Ideal para inicializaciones que deben ocurrir una sola vez.
     """
     print("Iniciando la aplicación...")
     # Crear las tablas en la base de datos si no existen
-    # Nota: En producción, se recomienda usar Alembic para migraciones.
     create_tables()
     print("Aplicación iniciada. Tablas creadas (si no existían).")
-
-# @app.on_event("shutdown")
-# async def shutdown_event():
-#     """
-#     Evento que se ejecuta al detener la aplicación.
-#     Ideal para limpiar recursos.
-#     """
-#     print("Deteniendo la aplicación...")
-#     # Aquí se podrían cerrar conexiones, limpiar caches, etc.
-#     print("Aplicación detenida.")
 
 # --- Inclusión de Routers ---
 
@@ -52,12 +34,17 @@ app.include_router(auth_router, prefix="/api/v1")
 
 # --- Rutas de prueba o health check (opcional) ---
 
+
 @app.get("/")
 async def root():
     """
     Endpoint raíz para verificar que la API está funcionando.
     """
-    return {"message": "¡Bienvenido a la API Backend Hexagonal CQRS Clenad code y SOLID y ahora Rabbit!", "version": "1.0.1"}
+    return {
+        "message": "¡Bienvenido a la API Backend Hexagonal CQRS Clenad code y SOLID y ahora Rabbit!",
+        "version": "1.0.1",
+    }
+
 
 @app.get("/health")
 async def health_check():
@@ -65,6 +52,7 @@ async def health_check():
     Endpoint de health check básico.
     """
     return {"status": "ok"}
+
 
 # --- Notas sobre la implementación ---
 # 1. `FastAPI()`: Crea la instancia principal de la aplicación.
