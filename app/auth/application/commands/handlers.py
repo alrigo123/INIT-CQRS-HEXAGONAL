@@ -21,28 +21,26 @@ PATRÓN DE DISEÑO: Dependency Injection (Inyección de Dependencias)
 """
 
 import uuid
-from typing import Callable, TYPE_CHECKING
+from typing import Callable
 from datetime import datetime
+import bcrypt # <-- Añade esta importación al inicio del archiv
 
 # Importamos modelos y repositorios de dominio
 # Importamos desde `users` porque necesitamos verificar usuarios existentes
 from app.users.domain.repositories import UserRepository
 # Importamos del propio dominio `auth`
-from ...domain.repositories import TokenRepository
-from ...domain.models import Token
+from app.auth.domain.repositories import TokenRepository
+from app.auth.domain.models import Token
 
 # Importamos comandos de aplicación
-# *** ELIMINAR ESTA LÍNEA ***
-# from ...application.commands.register_user_command import RegisterUserCommand
-# Importamos el comando de login
-from ...application.commands.login_command import LoginCommand
-
+from .login_command import LoginCommand
 
 def handle_login_user(
     command: LoginCommand,
     user_repository: UserRepository,
     token_repository: TokenRepository,
-    verify_password_fn: Callable[[str, str], bool],
+    # verify_password_fn: Callable[[str, str], bool],
+    verify_password_fn: Callable[[str, str], bool], # <-- Ahora (misma firma, pero la implementación será segura)
     generate_token_fn: Callable[[], str],
     calculate_expires_fn: Callable[[int], datetime]
 ):
@@ -145,35 +143,35 @@ def handle_login_user(
 
 # --- Funciones auxiliares (simulaciones, en producción usar librerías reales) ---
 # Estas funciones deben estar en la capa de infraestructura y ser inyectadas.
-
-def dummy_verify_password(plain_password: str, hashed_password: str) -> bool:
+def secure_verify_password(plain_password: str, hashed_password: str) -> bool:
     """
-    Función de ejemplo para verificar una contraseña contra un hash.
-    *** EN PRODUCCIÓN: Usar librerías seguras como passlib, bcrypt, argon2. ***
-    
-    Args:
-        plain_password (str): Contraseña en texto plano.
-        hashed_password (str): Contraseña hasheada almacenada.
-        
-    Returns:
-        bool: True si coinciden, False en caso contrario.
+    Verifica una contraseña contra un hash usando bcrypt.
+    *** IMPLEMENTACIÓN SEGURA ***
     """
-    import hashlib
-    plain_hash = hashlib.sha256(plain_password.encode('utf-8')).hexdigest()
-    return plain_hash == hashed_password
-
-def dummy_hash_password(password: str) -> str:
-    """Función de ejemplo para hashear una contraseña."""
-    import hashlib
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+    try:
+        # bcrypt.checkpw requiere bytes
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception as e:
+        # Loggear el error si tienes un logger
+        print(f"[!] Error al verificar contraseña con bcrypt: {e}")
+        # Devolver False en caso de error interno para no romper el flujo
+        return False
 
 def generate_access_token() -> str:
-    """Genera un token de acceso seguro."""
+    """Genera un token de acceso seguro.
+    
+    PATRÓN DE DISEÑO: Factory Method (Método Fábrica)
+    Encapsula la lógica de creación de tokens.
+    """
     import secrets
     return secrets.token_urlsafe(32)
 
 def calculate_expires_at(hours: int = 1) -> datetime:
-    """Calcula la fecha de expiración."""
+    """Calcula la fecha de expiración.
+    
+    PATRÓN DE DISEÑO: Factory Method (Método Fábrica)
+    Encapsula la lógica de cálculo de fechas.
+    """
     from datetime import datetime, timedelta
     return datetime.utcnow() + timedelta(hours=hours)
 

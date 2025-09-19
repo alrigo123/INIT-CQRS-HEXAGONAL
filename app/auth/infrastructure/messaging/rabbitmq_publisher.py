@@ -1,4 +1,4 @@
-# RABBITMQ PUBLISHER (ADAPTADOR DE SALIDA)
+# RABBITMQ PUBLISHER (ADAPTADOR SECUNDARIO)
 # Esta capa implementa un adaptador para publicar mensajes en RabbitMQ.
 # Es un ADAPTADOR SECUNDARIO en Arquitectura Hexagonal.
 # Se encarga de las interacciones con el sistema externo de mensajería.
@@ -12,12 +12,12 @@ from typing import Any, Dict # Para anotaciones de tipo
 # Se usa una variable de entorno para la configuración, buena práctica.
 # Valor por defecto apunta a una instancia local.
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
-# Nombre de la cola donde se publicarán los comandos de autenticación
+# Nombre de la cola donde se publicarán los comandos/eventos de autenticación
 AUTH_COMMANDS_QUEUE = 'auth_commands'
 
 class RabbitMQAuthPublisher:
     """
-    Adaptador de infraestructura para publicar comandos de autenticación en RabbitMQ.
+    Adaptador de infraestructura para publicar comandos/eventos de autenticación en RabbitMQ.
     Esta clase encapsula la lógica específica de Pika y RabbitMQ
     para enviar mensajes a una cola.
     
@@ -65,14 +65,14 @@ class RabbitMQAuthPublisher:
 
     def publish_command(self, command_type: str, command_data: Dict[str, Any]):
         """
-        Publica un comando genérico en la cola de RabbitMQ.
+        Publica un comando/evento genérico en la cola de RabbitMQ.
 
         Args:
-            command_type (str): El tipo de comando (ej: "RegisterUserCommand").
-            command_data (Dict[str, Any]): Los datos del comando.
+            command_type (str): El tipo de comando/evento (ej: "UserLoggedIn").
+            command_data (Dict[str, Any]): Los datos del comando/evento.
             
         PATRÓN DE DISEÑO: Command Pattern (Patrón Comando) - Publicación
-        Se publica un mensaje que representa un comando a ser ejecutado.
+        Se publica un mensaje que representa un comando a ser ejecutado o un evento que ocurrió.
         """
         try:
             # Asegura que la conexión esté activa
@@ -105,7 +105,7 @@ class RabbitMQAuthPublisher:
         except Exception as e:
             # Maneja cualquier otro error
             print(f"Error al publicar el mensaje en RabbitMQ: {e}")
-            raise RuntimeError(f"Error al publicar el comando en RabbitMQ: {e}") from e
+            raise RuntimeError(f"Error al publicar el comando/evento en RabbitMQ: {e}") from e
 
     def close(self):
         """
@@ -117,14 +117,14 @@ class RabbitMQAuthPublisher:
             self._connection.close()
 
 # --- Notas sobre la implementación ---
-# 1. Similar al publisher de `users`, pero con una cola diferente.
-#    Esto permite que cada contexto maneje sus propios comandos.
-# 2. `publish_command`: Método genérico para publicar cualquier comando de `auth`.
-#    Promueve la reutilización y evita duplicar lógica para cada tipo de comando.
-# 3. `AUTH_COMMANDS_QUEUE`: Cola específica para comandos de `auth`.
+# 1. Se eliminó cualquier referencia específica a `RegisterUserCommand`.
+# 2. Se actualizó la documentación para reflejar que puede publicar comandos o eventos.
+# 3. `publish_command`: Método genérico para publicar cualquier comando/evento de `auth`.
+#    Promueve la reutilización y evita duplicar lógica para cada tipo de mensaje.
+# 4. `AUTH_COMMANDS_QUEUE`: Cola específica para comandos/eventos de `auth`.
 #    Facilita el enrutamiento y el consumo específico por contexto.
-# 4. Uso de variables de entorno para la configuración.
+# 5. Uso de variables de entorno para la configuración.
 #    Buena práctica para hacer la aplicación configurable sin cambiar el código.
-# 5. Manejo de errores: Captura y relanza excepciones con mensajes más descriptivos.
-# 6. Persistencia de mensajes: Los mensajes se guardan en disco para no perderlos.
-# 7. Lazy Initialization: La conexión se crea solo cuando se necesita.
+# 6. Manejo de errores: Captura y relanza excepciones con mensajes más descriptivos.
+# 7. Persistencia de mensajes: Los mensajes se guardan en disco para no perderlos.
+# 8. Lazy Initialization: La conexión se crea solo cuando se necesita.

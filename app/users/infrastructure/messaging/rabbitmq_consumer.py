@@ -5,6 +5,7 @@ import traceback
 import time
 import os
 from typing import Dict, Any
+import bcrypt
 
 # Importamos el comando que vamos a consumir
 # Este es el comando que este consumidor sabe procesar
@@ -33,24 +34,20 @@ from pika.exceptions import AMQPConnectionError
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 USER_COMMANDS_QUEUE = "user_commands"
 
-def dummy_hash_password(password: str) -> str:
+# --- NUEVA FUNCIÓN SEGURA PARA HASHEAR ---
+def secure_hash_password(password: str) -> str:
     """
-    Función de ejemplo para hashear una contraseña.
-    
-    ADVERTENCIA DE SEGURIDAD: Esta implementación no es segura para producción.
-    En una implementación real, usar una librería criptográfica como bcrypt o argon2.
-    
-    Args:
-        password (str): Contraseña en texto plano
-        
-    Returns:
-        str: Contraseña "hasheada" (no realmente segura)
-        
-    MEJORA SUGERIDA: Reemplazar con bcrypt o passlib para hashing seguro
+    Hashea una contraseña usando bcrypt.
     """
-    # Usamos hashlib para una simulación básica. No es seguro para producción.
-    # hashlib.sha256 es vulnerable a ataques de fuerza bruta
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    try:
+        # bcrypt.gensalt() genera un salt aleatorio automáticamente
+        hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        # Devolvemos como string para poder serializar/deserializar fácilmente
+        return hashed.decode('utf-8')
+    except Exception as e:
+        print(f"[!] Error al hashear contraseña con bcrypt: {e}")
+        raise RuntimeError(f"Error al hashear la contraseña: {e}") from e
+# --- FIN NUEVA FUNCIÓN ---
 
 def process_create_user_command(command_data: Dict[str, Any]):
     """
@@ -66,13 +63,25 @@ def process_create_user_command(command_data: Dict[str, Any]):
         command_data (dict): Datos del comando deserializados desde JSON
     """
     print(f"[.] Processing CreateUserCommand for '{command_data['name']}'")
+    
+     # --- CAMBIO CLAVE: HASHEAR LA CONTRASEÑA AQUÍ ---
+    try:
+        plain_password = command_data["password"]
+        # Usamos la nueva función segura
+        hashed_password = secure_hash_password(plain_password)
+        print(f"[.] Contraseña hasheada para el usuario '{command_data['name']}'.")
+    except Exception as e:
+        print(f"[!] Error al hashear la contraseña antes de crear el comando: {e}")
+        # Manejar el error: log, enviar a dead-letter, etc. Por ahora, simplemente retornamos.
+        return
+    # --- FIN CAMBIO CLAVE ---
 
     # 1. Crear el objeto comando desde los datos deserializados
     # Reconstruimos el comando del dominio a partir de los datos recibidos
     command = CreateUserCommand(
         name=command_data["name"],
         email=command_data["email"],
-        password=command_data["password"],
+        password=hashed_password,
     )
 
     # 2. Obtener dependencias necesarias para el handler
@@ -85,15 +94,21 @@ def process_create_user_command(command_data: Dict[str, Any]):
     # Crear el repositorio con la sesión (adaptador concreto de persistencia)
     user_repository = SQLAlchemyUserRepository(db_session)
     
+     # Creamos una función "dummy" para pasar al handler.
+    # El handler espera una función que hashea, pero la contraseña ya está hasheada.
+    def pass_through_hashed_password(pwd: str) -> str:
+        # Simplemente devuelve la contraseña que recibe (que ya es el hash)
+        return pwd
+    
     # Función para hashear contraseñas (adaptador concreto de seguridad)
     # MEJORA SUGERIDA: Usar implementación real de hashing seguro
-    hash_password_fn = dummy_hash_password
+    hash_password_fn = pass_through_hashed_password
 
     try:
         # 3. Invocar al handler de aplicación
         # Pasamos el comando y las dependencias inyectadas
         # Este es el punto donde se ejecuta la lógica de negocio
-        user_id = handle_create_user(command, user_repository, hash_password_fn)
+        user_id = handle_create_user(command, user_repository)
         print(f"[.] Successfully created user with ID: {user_id}")
     except Exception as e:
         # Manejar errores del handler (validaciones, problemas de BD, etc.)

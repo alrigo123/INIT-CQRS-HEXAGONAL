@@ -101,7 +101,8 @@ class RabbitMQPublisher:
                     "email": command.email,
                     # ADVERTENCIA DE SEGURIDAD: Enviar password en texto plano por colas
                     # no es recomendable. Considerar hashing previo o tokens temporales.
-                    "password": command.password
+                    "password": command.password,
+                    "user_id": command.user_id # <-- Incluye el user_id generado en el endpoint
                 }
             }
             # Convertir el diccionario a string JSON para enviarlo como mensaje

@@ -1,5 +1,6 @@
 # app/users/application/commands/create_user_command.py
 from dataclasses import dataclass
+from typing import Optional # Asegúrate de tener esta importación
 
 @dataclass(frozen=True)  # frozen=True hace que el objeto sea inmutable
 class CreateUserCommand:
@@ -24,6 +25,7 @@ class CreateUserCommand:
     name: str
     email: str
     password: str
+    user_id: Optional[str] = None # Hacerlo opcional es buena práctica
 
 # --- Notas sobre la implementación ---
 # 1. `@dataclass`: Es una forma concisa de crear clases que principalmente 

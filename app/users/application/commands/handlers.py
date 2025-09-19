@@ -13,7 +13,6 @@ from ...domain.repositories import UserRepository
 def handle_create_user(
     command: CreateUserCommand,
     user_repository: UserRepository,
-    hash_password_fn: Callable[[str], str]
 ) -> str:
     """
     Handler para el comando CreateUserCommand.
@@ -61,18 +60,18 @@ def handle_create_user(
     # 2. Hashear la contraseña
     # En una implementación más robusta, podrías inyectar un servicio PasswordHasher
     # hashed_password = password_hasher.hash(command.password)
-    # Para simplificar ahora, asumimos que hash_password_fn es una función válida
-    try:
-        hashed_password = hash_password_fn(command.password)
-    except Exception as e:
-        # Manejar errores de hashing (por ejemplo, contraseña demasiado corta)
-        # Podrías lanzar una excepción específica de aplicación
-        raise ValueError(f"Error al hashear la contraseña: {e}")
-
+    
     # 3. Generar un ID único para el nuevo usuario
     # Usamos uuid4 para generar un ID único. En la BD podría ser un UUID o auto-incremental.
     # Este ID se genera en la capa de aplicación, no en el dominio
-    user_id = str(uuid.uuid4())
+    user_id = command.user_id if command.user_id else str(uuid.uuid4())
+
+
+    # --- CAMBIO CLAVE: Usar directamente la contraseña del comando ---
+    # Asumimos que command.password YA es el hashed_password
+    hashed_password = command.password # <-- Usamos directamente
+    # No llamamos a hash_password_fn(command.password) porque ya está hasheada
+    # --- FIN CAMBIO CLAVE ---
 
     # 4. Crear la entidad de dominio User
     # El modelo de dominio validará el email y otros datos.
