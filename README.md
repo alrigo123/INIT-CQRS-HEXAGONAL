@@ -42,7 +42,7 @@ Incluye **API REST con FastAPI**, **RabbitMQ** para comandos (CQRS de escritura)
 
 Este INIT aplica:
 
-* **Hexagonal**: el **dominio** es independiente de frameworks/infra.
+* **Hexagonal**: el **dominio** es independiente de frameworks/infraestructura.
 * **CQRS**:
 
   * **Escritura (Commands)** → se publican a **RabbitMQ** y los procesa un **worker** (consumidor).
@@ -65,15 +65,13 @@ Este INIT aplica:
 * **pytest**, **coverage** (pruebas)
 * **Docker** & **Docker Compose**
 
-> 🔄 Se **elimina** del README anterior: `passlib` y el “RegisterUserCommand” de `auth` (no se usa en el proyecto actual).
-
 ---
 
 ## 3. Arquitectura
 
 ### 3.1. Hexagonal (Puertos y Adaptadores)
 
-* **Dominio**: entidades y puertos (`repositories.py`) **sin** dependencias de infra.
+* **Dominio**: entidades y puertos (`repositories.py`) **sin** dependencias de infraestructura.
 * **Aplicación**: casos de uso en **handlers** que reciben puertos/servicios por **DI**.
 * **Infraestructura**: adaptadores concretos (API, repos SQLAlchemy, RabbitMQ).
 
@@ -107,7 +105,7 @@ app/
  │   │   │   └─ create_user_command.py
  │   │   ├─ queries/
  │   │   │   └─ get_user_query.py
- │   │   └─ handlers/               # handle_create_user, handle_get_user...
+ │   │   └─ handlers/               # handlers for commands & querys.
  │   └─ infrastructure/
  │       ├─ api/v1/
  │       │   ├─ routes.py           # POST /users, GET /users/{id}
@@ -118,7 +116,8 @@ app/
  │       │   └─ repositories.py     # SQLAlchemyUserRepository (adaptador)
  │       └─ messaging/
  │           ├─ rabbitmq_publisher.py
- │           └─ rabbitmq_consumer.py
+ │           ├─ rabbitmq_consumer.py
+ │           └─ start_consumer.py
  └─ auth/
      ├─ domain/
      │   ├─ models.py               # (p.ej., Token / credenciales)
@@ -131,6 +130,10 @@ app/
          ├─ api/v1/
          │   ├─ routes.py           # POST /auth/login, POST /auth/validate-token
          │   └─ schemas.py
+         ├─ messaging/
+         │   ├─ rabbitmq_publisher.py
+         │   ├─ rabbitmq_consumer.py
+         │   └─ start_consumer.py
          └─ persistence/
              ├─ database.py         # comparte/coordina Base
              ├─ auth_model.py
@@ -144,9 +147,6 @@ docker-compose.yml                 # (API, db, rabbitmq, workers)
 requirements.txt
 ```
 
-> ❗️**Nota**: En tu ZIP hay archivos con `...` (elipses) en `main.py` y `docker-compose.yml`.
-> Aquí documentamos **la intención final**; ajusta tu repo para que coincida.
-
 ---
 
 ## 5. Contextos Implementados
@@ -158,7 +158,7 @@ requirements.txt
 
   * **Command**: `CreateUserCommand` (+ handler).
   * **Query**: `GetUserQuery` (+ handler).
-* **Infra**:
+* **Infraestructura**:
 
   * **API**: `POST /api/v1/users/`, `GET /api/v1/users/{id}`.
   * **Persistencia**: `SQLAlchemyUserRepository`.
@@ -172,11 +172,10 @@ requirements.txt
 
   * **Command**: `LoginCommand` (síncrono).
   * **Query**: `ValidateTokenQuery`.
-* **Infra**:
+* **Infraestructura**:
 
   * **API**: `POST /api/v1/auth/login`, `POST /api/v1/auth/validate-token`.
   * **Persistencia**: modelos/repos de `auth`.
-  * **Mensajería**: **no usada** actualmente en `auth` (se elimina “RegisterUserCommand” del README anterior).
 
 ---
 
@@ -207,8 +206,6 @@ requirements.txt
 2. Handler verifica existencia/expiración.
 3. Respuesta con `{ is_valid, user_id?, exp? }`.
 
-> 🕒 Recomendación: usar tiempos **UTC aware** (`datetime.now(timezone.utc)`) para evitar errores tipo *“can't compare offset-naive and offset-aware datetimes”*.
-
 ---
 
 ## 7. Cómo Ejecutar
@@ -217,10 +214,16 @@ requirements.txt
 
 * Docker & Docker Compose
 * (Opcional) Python 3.10+ para correr local sin Docker
+* Extraer carpet zip INIT-CQRS-HEXAGONAL 
+* o clonar repositorio 
+```bash 
+git clone https://github.com/alrigo123/INIT-CQRS-HEXAGONAL.git
+```
 
 ### 7.2. Levantar con Docker
 
 ```bash
+# Posicionarse en root 'INIT-CQRS-HEXAGONAL'
 docker-compose down
 docker-compose up --build
 ```
@@ -231,8 +234,7 @@ Contenedores esperados:
 * **rabbitmq** (UI: [http://localhost:15672](http://localhost:15672))
 * **api** (FastAPI: [http://localhost:8000](http://localhost:8000))
 * **users\_consumer** (worker de comandos `users`)
-
-> Ajusta nombres/variables según tu `docker-compose.yml` definitivo.
+* **auth\_consumer** (worker de comandos `auth`)
 
 ### 7.3. Endpoints útiles
 
@@ -259,14 +261,18 @@ pytest -v
 Cobertura:
 
 ```bash
-coverage run -m pytest
-coverage report -m
+# --- EN ENVIRONMENT DE Python --- #
+# DOMINIO
+coverage run --source=app/users/domain,app/auth/domain -m pytest tests/users/domain/ tests/auth/domain/ 
+coverage report
+
+# APPLICACION
+coverage run --source=app/users/application,app/auth/application -m pytest tests/users/application/ tests/auth/application/
+coverage report
+
 # (Opcional) HTML:
 coverage html
 ```
-
-> Objetivo: **≥ 80% en la capa de dominio** (según la consigna del PDF).
-> No incluimos un porcentaje “fijo” aquí para evitar desalinearse del repo real.
 
 ---
 
@@ -281,25 +287,4 @@ coverage html
 * **DI**: `shared/di_container.py` centraliza construcción/inyectables.
 * **Persistencia**: SQLAlchemy; recomendable unificar `Base`/metadata y orquestar `create_all()` en `startup`.
 * **Seguridad**: hashing con **bcrypt** en el worker; tokens validados con tiempos UTC.
-* **Observabilidad** (recomendado): logging estructurado y correlation-id entre publisher/consumer.
-
----
-
-## 10. Contribuciones
-
-Proyecto de prueba técnica: no se esperan contribuciones externas.
-
-## 11. Licencia
-
-MIT (ver `LICENSE`).
-
----
-
-### Cambios vs. README anterior (resumen)
-
-* ❌ Removido: `RegisterUserCommand` en `auth` y su flujo asociado.
-* ❌ Removido: referencia a `passlib`.
-* ✅ Aclarado: **`auth` opera síncrono** (login/validate).
-* ✅ Conservado: Commands de **`users`** por **RabbitMQ**; Queries directas.
-* ✅ Añadido: advertencia sobre **datetimes aware** para tokens.
-* ✅ Alineado a tu árbol real (DI, consumidores, hashing con `bcrypt`).
+* **Observabilidad**: logging estructurado y correlation-id entre publisher/consumer.
