@@ -33,8 +33,6 @@ Incluye **API REST con FastAPI**, **RabbitMQ** para comandos (CQRS de escritura)
   * [7.3. Endpoints útiles](#73-endpoints-útiles)
 * [8. Pruebas y Cobertura](#8-pruebas-y-cobertura)
 * [9. Decisiones Arquitectónicas](#9-decisiones-arquitectónicas)
-* [10. Contribuciones](#10-contribuciones)
-* [11. Licencia](#11-licencia)
 
 ---
 
