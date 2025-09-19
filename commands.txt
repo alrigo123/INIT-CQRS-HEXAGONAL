@@ -53,6 +53,7 @@ coverage run --source=app/auth/domain -m pytest tests/auth/domain/
 
 
 coverage run --source=app/users/domain,app/auth/domain -m pytest tests/users/domain/ tests/auth/domain/ 
+coverage run --source=app/users/application,app/auth/application -m pytest tests/users/application/ tests/auth/application/
 
 
 coverage report

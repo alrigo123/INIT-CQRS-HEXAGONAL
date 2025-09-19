@@ -2,26 +2,45 @@
 """
 Contenedor de Inyección de Dependencias para la aplicación.
 
-Este módulo centraliza la configuración y creación de adaptadores concretos
-(infraestructura) que implementan las interfaces (puertos) definidas en el dominio.
-Los adaptadores primarios (endpoints, consumidores) solicitarán dependencias
-a través de este contenedor, eliminando la necesidad de importaciones directas
-de módulos de infraestructura dentro de ellos.
-
-Esto mejora el desacoplamiento y facilita el testing y el mantenimiento,
-cumpliendo con el punto 7 del PDF de la prueba técnica.
+Este módulo es el núcleo del sistema de Inyección de Dependencias (DI).
+Su función principal es centralizar la creación y resolución de todas las
+dependencias concretas de infraestructura (adaptadores) que implementan
+las interfaces definidas en el dominio (puertos).
 
 PATRÓN DE DISEÑO: Service Locator (Variante simple de Contenedor DI)
 ARQUITECTURA: Facilita la Inversión de Dependencias en Arquitectura Hexagonal
+
+¿Por qué es importante?
+-----------------------
+En una Arquitectura Hexagonal, los adaptadores primarios (como los endpoints
+de FastAPI o los consumidores de RabbitMQ) necesitan usar adaptadores concretos
+(por ejemplo, `SQLAlchemyUserRepository` para guardar un usuario).
+Sin un sistema de DI, estos adaptadores tendrían que importar directamente
+los módulos de infraestructura (`from app.users.infrastructure.persistence.repositories import SQLAlchemyUserRepository`).
+Esto crearía un fuerte acoplamiento entre la lógica de entrada/salida y los
+detalles técnicos de implementación, violando el principio de Arquitectura Hexagonal.
+
+Este contenedor resuelve ese problema al:
+1.  Centralizar todas las importaciones de infraestructura en un solo lugar.
+2.  Proporcionar funciones (`get_...`) que los adaptadores pueden usar para
+    obtener instancias de las interfaces (puertos) sin saber qué implementación
+    concreta están recibiendo.
+3.  Cumplir con el punto 7 del PDF: "Agregar soporte para inyección de dependencias
+    en todos los componentes, permitiendo una inicialización y configuración
+    dinámica con bajo acoplamiento."
 """
 
-# Importamos las interfaces (puertos) del dominio
+# --- Importaciones de Interfaces del Dominio (Puertos) ---
+# Estas son las abstracciones que define el dominio/core de la aplicación.
+# Los adaptadores primarios dependerán de estas interfaces, no de implementaciones.
 from app.users.domain.repositories import UserRepository
 from app.auth.domain.repositories import TokenRepository
 
-# Importamos las implementaciones concretas (adaptadores) de la infraestructura
+# --- Importaciones de Implementaciones Concretas (Adaptadores de Infraestructura) ---
 # *** ESTAS SON LAS ÚNICAS IMPORTACIONES DIRECTAS DE INFRAESTRUCTURA EN TODO EL PROYECTO ***
-# *** Y ESTÁN CONCENTRADAS AQUÍ ***
+# *** Y ESTÁN CONCENTRADAS AQUÍ PARA EVITAR ACOPLAMIENTO ***
+# El objetivo es que ningún otro archivo del proyecto tenga que importar directamente
+# desde `app/*/infrastructure/...`. Solo este contenedor lo hace.
 from app.users.infrastructure.persistence.repositories import SQLAlchemyUserRepository
 from app.auth.infrastructure.persistence.repositories import SQLAlchemyTokenRepository
 from app.users.infrastructure.persistence.database import SessionLocal as UsersSessionLocal
@@ -31,14 +50,17 @@ from app.auth.infrastructure.persistence.database import SessionLocal as AuthSes
 from app.users.infrastructure.messaging.rabbitmq_publisher import RabbitMQPublisher
 
 # --- Fábricas de Dependencias ---
-# Estas funciones encapsulan la lógica de creación de adaptadores concretos.
+# Estas funciones son las encargadas de crear las INSTANCIAS CONCRETAS de los adaptadores.
+# Cada función sabe exactamente cómo construir un adaptador específico.
+# Por ejemplo, `create_user_repository` sabe que necesita una sesión de BD de `users`
+# y luego crea una instancia de `SQLAlchemyUserRepository` pasándole esa sesión.
 
 def create_user_repository() -> UserRepository:
     """
     Fábrica para crear una instancia de UserRepository.
     Retorna un adaptador concreto.
     """
-    # Creamos la sesión (en una implementación más avanzada, la sesión podría ser una dependencia inyectada)
+    # Creamos la sesión específica del contexto 'users'
     db_session = UsersSessionLocal()
     # Creamos el adaptador concreto, pasándole la sesión
     repo = SQLAlchemyUserRepository(db_session)
@@ -61,19 +83,25 @@ def create_rabbitmq_publisher() -> RabbitMQPublisher:
     publisher = RabbitMQPublisher()
     return publisher
 
-# --- Contenedor Simple ---
-# Un diccionario que mapea un "nombre" o "tipo" de dependencia a su fábrica.
-# En una implementación más avanzada, esto podría ser una clase con métodos más complejos.
+# --- Registro del Contenedor ---
+# Un diccionario simple que actúa como registro.
+# Mapea un nombre lógico de dependencia (como "user_repository") a su fábrica.
+# Esto permite desacoplar el "qué" se pide del "cómo" se crea.
+# En una implementación más avanzada, esto podría ser una clase más compleja.
 _DEPENDENCY_REGISTRY = {
     "user_repository": create_user_repository,
     "token_repository": create_token_repository,
     "rabbitmq_publisher": create_rabbitmq_publisher,
-    # Se pueden añadir más dependencias aquí
+    # Se pueden añadir más dependencias aquí fácilmente
 }
 
 def get_dependency(dependency_name: str):
     """
-    Obtiene una dependencia por su nombre.
+    Obtiene una dependencia por su nombre lógico.
+    
+    Esta es la función central que resuelve una solicitud de dependencia.
+    Busca en el registro `_DEPENDENCY_REGISTRY` la fábrica correspondiente
+    y la ejecuta para crear la instancia concreta.
     
     Args:
         dependency_name (str): El nombre de la dependencia a obtener 
@@ -84,6 +112,7 @@ def get_dependency(dependency_name: str):
         
     Raises:
         ValueError: Si el nombre de la dependencia no se encuentra en el registro.
+                    Esto ayuda a detectar errores de configuración temprano.
     """
     factory = _DEPENDENCY_REGISTRY.get(dependency_name)
     if not factory:
@@ -91,13 +120,17 @@ def get_dependency(dependency_name: str):
     # Llamamos a la fábrica para crear y devolver la instancia
     return factory()
 
-# --- Alias para facilitar el tipado y el uso en Depends() ---
-# Creamos alias que simplemente llaman a get_dependency con un nombre específico.
-# Esto hace que el uso en Depends() sea más limpio y tipado.
+# --- Alias para Facilitar el Uso con FastAPI ---
+# Estos alias son funciones de conveniencia que simplemente llaman a `get_dependency`
+# con un nombre específico. Son cruciales para la integración con FastAPI.
+# FastAPI usa `Depends(get_user_repository)` para inyectar la dependencia.
+# El tipado (`-> UserRepository`) ayuda a FastAPI a entender qué tipo de objeto se inyecta.
 
 def get_user_repository() -> UserRepository:
     """
     Alias tipado para obtener UserRepository.
+    Este es el punto de entrada principal para que los adaptadores primarios
+    (como endpoints de FastAPI) soliciten un repositorio de usuarios.
     
     Uso en FastAPI:
         user_repo: Annotated[UserRepository, Depends(get_user_repository)]
@@ -107,6 +140,7 @@ def get_user_repository() -> UserRepository:
 def get_token_repository() -> TokenRepository:
     """
     Alias tipado para obtener TokenRepository.
+    Punto de entrada para que los adaptadores primarios soliciten un repositorio de tokens.
     
     Uso en FastAPI:
         token_repo: Annotated[TokenRepository, Depends(get_token_repository)]
@@ -116,6 +150,7 @@ def get_token_repository() -> TokenRepository:
 def get_rabbitmq_publisher() -> RabbitMQPublisher:
     """
     Alias tipado para obtener RabbitMQPublisher.
+    Punto de entrada para que los adaptadores primarios soliciten un publicador de mensajes.
     
     Uso en FastAPI:
         publisher: Annotated[RabbitMQPublisher, Depends(get_rabbitmq_publisher)]
