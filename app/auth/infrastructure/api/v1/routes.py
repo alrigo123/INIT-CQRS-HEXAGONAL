@@ -1,37 +1,29 @@
 # API ROUTES (ENDPOINTS DE FASTAPI)
-# Esta capa expone los endpoints HTTP de la API.
-# Se encarga de recibir peticiones, delegar al handler de aplicación y devolver respuestas.
-# Es un ADAPTADOR PRIMARIO en Arquitectura Hexagonal.
+# ADAPTADOR PRIMARIO en Arquitectura Hexagonal.
 
-from fastapi import APIRouter, HTTPException, status, Depends # FastAPI
-from typing import Annotated # Para anotaciones de tipo más limpias
+# IMPORTS
+from fastapi import APIRouter, HTTPException, status, Depends
+from typing import Annotated
 
-# --- Importaciones de Esquemas ---
 # Importa los DTOs para validar entrada y estructurar salida
-# *** ELIMINADO: RegisterUserRequest, RegisterUserResponse ***
-from .schemas import (
-    LoginRequest,
-    LoginResponse,
-    ValidateTokenRequest,
-    ValidateTokenResponse,
-)
+from .schemas import ( LoginRequest,LoginResponse,ValidateTokenRequest,ValidateTokenResponse )
 
-# --- Importaciones para Login ---
-# Importa el comando y su handler
+# Importamos las interfaces del dominio (puertos)
+from app.users.domain.repositories import UserRepository # <-- INTERFACE
+from app.auth.domain.repositories import TokenRepository # <-- INTERFACE
+
+# Importaciones para Login
 from ....application.commands.login_command import LoginCommand
-from ....application.commands.handlers import handle_login_user, secure_verify_password, generate_access_token, calculate_expires_at # <-- Ahora
-
-# Importamos el puerto del dominio para anotaciones de tipo
-from app.users.domain.repositories import UserRepository
-from app.auth.domain.repositories import TokenRepository
+from ....application.commands.handlers import handle_login_user, secure_verify_password, generate_access_token, calculate_expires_at
 
 # --- Importaciones para Validación de Token ---
 # Importa la consulta y su handler
 from ....application.queries.validate_token_query import ValidateTokenQuery
 from ....application.queries.handlers import handle_validate_token
 
-# Para la dependencia de validación de token
-from sqlalchemy.orm import Session
+# *** NUEVO: Importamos las dependencias del contenedor DI compartido ***
+# *** ESTO REEMPLAZA las importaciones directas de infraestructura ***
+from app.shared.di_container import get_user_repository, get_token_repository
 
 # Creamos el router de FastAPI para este contexto
 router = APIRouter(
@@ -40,89 +32,27 @@ router = APIRouter(
     responses={404: {"description": "Not found"}}, # Respuesta por defecto para 404
 )
 
-# --- DEPENDENCIAS DE FASTAPI ---
-# Son funciones que se inyectan en los endpoints usando `Depends()`.
-# Gestionan recursos como conexiones a BD o instancias de servicios.
-# *** MEJORA: Estas dependencias aún importan infraestructura directamente.
-# Idealmente, estas crearían adaptadores y devolverían interfaces (puertos).
-
-def get_user_and_token_repositories():
-    """
-    Dependencia para obtener las instancias de los repositorios de users y auth.
-    *** ESTA DEPENDENCIA TIENE PROBLEMAS DE ARQUITECTURA ***
-    Importa directamente implementaciones concretas de infraestructura.
-    Idealmente, esto estaría en un módulo de configuración/inyección de dependencias.
-    """
-    # *** PROBLEMA: Importaciones directas de infraestructura ***
-    from app.users.infrastructure.persistence.database import (
-        SessionLocal as UsersSessionLocal,
-    )
-    from app.users.infrastructure.persistence.repositories import (
-        SQLAlchemyUserRepository as UsersSQLAlchemyUserRepository,
-    )
-    from app.auth.infrastructure.persistence.database import (
-        SessionLocal as AuthSessionLocal,
-    )
-    from app.auth.infrastructure.persistence.repositories import (
-        SQLAlchemyTokenRepository as AuthSQLAlchemyTokenRepository,
-    )
-    
-    # Sesiones de BD
-    users_db_session = UsersSessionLocal()
-    auth_db_session = AuthSessionLocal()
-
-    # Repositorios (adaptadores concretos)
-    # *** PROBLEMA: Devuelve implementaciones concretas ***
-    # El handler espera las interfaces `UserRepository` y `TokenRepository`.
-    user_repository = UsersSQLAlchemyUserRepository(users_db_session)
-    token_repository = AuthSQLAlchemyTokenRepository(auth_db_session)
-
-    try:
-        # Devuelve una tupla de los adaptadores concretos
-        yield user_repository, token_repository
-    finally:
-        users_db_session.close()
-        auth_db_session.close()
-
-def get_auth_db_session() -> Session:
-    """Dependencia para obtener una sesión de la BD de auth."""
-    # *** PROBLEMA: Importación directa de infraestructura ***
-    from app.auth.infrastructure.persistence.database import SessionLocal as AuthSessionLocal
-    
-    db_session = AuthSessionLocal()
-    try:
-        yield db_session
-    finally:
-        db_session.close()
-
-def get_token_repository(
-    db_session: Session = Depends(get_auth_db_session),
-) -> TokenRepository: # Anotamos con la interfaz
-    """Dependencia para obtener el repositorio de tokens."""
-    # *** PROBLEMA: Importación directa de infraestructura ***
-    from app.auth.infrastructure.persistence.repositories import SQLAlchemyTokenRepository
-    # Retorna una instancia del adaptador concreto
-    return SQLAlchemyTokenRepository(db_session)
+# *** ELIMINADO: Todas las funciones `get_...` anteriores que hacían importaciones directas. ***
 
 # --- ENDPOINTS (RUTAS DE LA API) ---
 
 @router.post("/login", response_model=LoginResponse, status_code=status.HTTP_200_OK)
 async def login_user(
     login_request: LoginRequest, # Pydantic valida la entrada
-    # Inyecta las dependencias (adaptadores concretos)
-    repos: Annotated[tuple, Depends(get_user_and_token_repositories)],
+    # Inyectamos las dependencias a través del contenedor
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)], # <-- INTERFACE
+    token_repo: Annotated[TokenRepository, Depends(get_token_repository)], # <-- INTERFACE
 ):
     """
     Endpoint para iniciar sesión de un usuario.
     
     ARQUITECTURA: Adaptador Primario en Arquitectura Hexagonal
     Recibe una petición HTTP, la transforma en un comando y lo delega.
+    *** MEJORA: Ahora depende de interfaces inyectadas, no de implementaciones concretas. ***
     """
-    # Desempaqueta las dependencias inyectadas (adaptadores concretos)
-    # Aunque se anoten como UserRepository y TokenRepository, son las implementaciones concretas.
-    user_repository: UserRepository
-    token_repository: TokenRepository
-    user_repository, token_repository = repos
+    # *** SECCION MODIFICADA ***
+    # Desempaquetado de `repos` eliminado.
+    # `user_repo` y `token_repo` se inyectan directamente como interfaces.
 
     try:
         # 1. Crear el comando LoginCommand (DTO de aplicación)
@@ -131,11 +61,11 @@ async def login_user(
         )
 
         # 2. Llamar al handler de aplicación
-        # Se pasan las dependencias (adaptadores) y funciones auxiliares necesarias.
+        # Se pasan las dependencias (interfaces) y funciones auxiliares necesarias.
         access_token = handle_login_user(
             command=command,
-            user_repository=user_repository, # Adaptador concreto inyectado
-            token_repository=token_repository, # Adaptador concreto inyectado
+            user_repository=user_repo, # <-- Interfaz inyectada
+            token_repository=token_repo, # <-- Interfaz inyectada
             verify_password_fn=secure_verify_password, # Función auxiliar inyectada
             generate_token_fn=generate_access_token, # Función auxiliar inyectada
             calculate_expires_fn=calculate_expires_at, # Función auxiliar inyectada
@@ -163,23 +93,23 @@ async def login_user(
 )
 async def validate_token(
     token_request: ValidateTokenRequest, # Pydantic valida la entrada
-    # Inyecta el repositorio de tokens (adaptador concreto)
-    token_repo: Annotated[
-        TokenRepository, Depends(get_token_repository) # Anotado con la interfaz
-    ],
+    # Inyecta el repositorio de tokens a través del contenedor
+    token_repo: Annotated[TokenRepository, Depends(get_token_repository)], # <-- INTERFACE
 ):
     """
     Endpoint para validar un token de acceso.
     
     ARQUITECTURA: Adaptador Primario en Arquitectura Hexagonal
     Recibe una petición HTTP, la transforma en una consulta y lo delega.
+    *** MEJORA: Ahora depende de la interfaz inyectada, no de la implementación concreta. ***
     """
     try:
         # 1. Crear la consulta ValidateTokenQuery (DTO de aplicación)
         query = ValidateTokenQuery(access_token=token_request.access_token)
 
         # 2. Llamar al handler de aplicación
-        result = handle_validate_token(query=query, token_repository=token_repo) # Adaptador concreto
+        # Pasamos la interfaz inyectada.
+        result = handle_validate_token(query=query, token_repository=token_repo) # <-- Interfaz
 
         # 3. Devolver la respuesta estructurada
         if result and result.get("is_valid"):
@@ -201,12 +131,19 @@ async def validate_token(
 # 1. Se eliminaron las funciones duplicadas `login_user` y `validate_token` que estaban simuladas.
 # 2. Se eliminaron todas las referencias a RegisterUser.
 # 3. Se corrigieron las importaciones faltantes y se eliminaron las innecesarias.
-# 4. Se usó `Depends` con funciones dependencia dedicadas.
+# 4. *** MODIFICADO: Se eliminaron todas las funciones `get_...` anteriores. ***
 # 5. Se mantuvo el manejo de errores con `HTTPException`.
 # 6. Se eliminaron las funciones auxiliares duplicadas (dummy_verify_password, etc.)
 #    ya que se importan directamente del handler.
 # 7. Se eliminó el bloque `finally: pass` innecesario.
-# 8. Se reutilizó la lógica de dependencias existente (`get_user_and_token_repositories`) para `login`.
-# 9. Se crearon nuevas dependencias específicas (`get_auth_db_session`, `get_token_repository`) para `validate-token`.
-# 10. *** PROBLEMA PENDIENTE: Las dependencias importan directamente de infraestructura.
-#     Esto se puede mejorar creando un módulo de inyección de dependencias centralizado.
+# 8. *** MODIFICADO: Se eliminó la dependencia compleja `get_user_and_token_repositories`. ***
+# 9. *** MODIFICADO: Se eliminaron `get_auth_db_session`, `get_token_repository` específicas. ***
+# 10. *** MEJORA: Las dependencias ahora se obtienen del `di_container`, eliminando importaciones directas. ***
+#     Esto mejora significativamente el desacoplamiento y cumple con el punto 7 del PDF.
+
+# Rol en la Arquitectura
+# Adaptador de entrada: Convierte requests HTTP en acciones del sistema.
+# Implementación CQRS: Separa comandos (POST /login) de consultas (POST /validate-token).
+# Orquestación: Coordina adaptadores de persistencia a través de interfaces.
+# Validación y serialización: Usa Pydantic para estructurar datos.
+# *** MEJORA CLAVE: Cumple con el punto 7 del PDF sobre Inyección de Dependencias. ***

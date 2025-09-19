@@ -21,8 +21,8 @@ PATRÓN DE DISEÑO: Dependency Injection (Inyección de Dependencias)
 """
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Callable
-from datetime import datetime, timezone
 import bcrypt # <-- Añade esta importación al inicio del archiv
 
 # Importamos modelos y repositorios de dominio
@@ -116,6 +116,7 @@ def handle_login_user(
     # 5. Calcular expiración usando la función inyectada
     try:
         expires_at = calculate_expires_fn(1)  # Expira en 1 hora
+        print(f"[DEBUG] expires_at creado: {expires_at}, tzinfo: {expires_at.tzinfo}") # Para depurar
     except Exception as e:
         # Error interno al calcular la expiración
         raise RuntimeError(f"Error al calcular la expiración del token: {e}") from e

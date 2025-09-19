@@ -6,26 +6,19 @@ import uuid
 # Importamos los esquemas Pydantic para validación de requests/responses
 from .schemas import UserCreateRequest, UserResponse
 
-# Importamos el adaptador de mensajería para publicar comandos
-# Este es un adaptador de infraestructura que nos permite enviar mensajes a RabbitMQ
-from ...messaging.rabbitmq_publisher import RabbitMQPublisher
-
-# Importamos el repositorio y la base de datos para las consultas directas
-# Estos son adaptadores de infraestructura para acceso a datos
-from ...persistence.repositories import SQLAlchemyUserRepository
-from ...persistence.database import get_db_session
-
-# Importamos el comando de aplicación y el modelo de dominio
+# Importamos las interfaces del dominio (puertos) y modelos
 # Estos son elementos del núcleo de nuestra aplicación
-from ....application.commands.create_user_command import CreateUserCommand
+from ....domain.repositories import UserRepository # <-- INTERFACE
 from ....domain.models import User
 
-
+# Importamos comandos, queries y handlers
+from ....application.commands.create_user_command import CreateUserCommand
 from ....application.queries.get_user_query import GetUserQuery
 from ....application.queries.handlers import handle_get_user
 
-# Para manejar sesiones de SQLAlchemy (ORM para base de datos)
-from sqlalchemy.orm import Session
+# *** NUEVO: Importamos las dependencias del contenedor DI compartido ***
+# *** ESTO REEMPLAZA las importaciones directas de infraestructura ***
+from app.shared.di_container import get_user_repository, get_rabbitmq_publisher, RabbitMQPublisher
 
 # Crear un router de FastAPI para este módulo
 # Este router se montará en main.py bajo un prefijo (por ejemplo, /api/v1/users)
@@ -36,36 +29,14 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},  # Respuestas por defecto
 )
 
-# --- Dependencias ---
-# Estas funciones facilitan la inyección de dependencias en los endpoints.
-# FastAPI usa Depends() para inyectar estas dependencias automáticamente
-
-
-def get_rabbitmq_publisher():
-    """
-    Dependencia para obtener una instancia del publicador de RabbitMQ.
-    Esta es una dependencia que maneja el ciclo de vida del publisher.
-    En una implementación más avanzada, esto podría venir de un contenedor DI.
-    """
-    # Creamos una nueva instancia del publisher para cada request
-    # En producción, podrías querer un singleton o un pool de conexiones
-    publisher = RabbitMQPublisher()
-    try:
-        # yield permite que FastAPI use el publisher y luego ejecute el finally
-        yield publisher
-    finally:
-        # Asegurarse de cerrar la conexión cuando termina el request
-        # Esto es importante para liberar recursos
-        publisher.close()
-
-
 # --- Endpoints ---
-
+# *** AHORA DEPENDEMOS DE LAS INTERFACES Y DEL CONTENEDOR ***
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_request: UserCreateRequest,
-    publisher: Annotated[RabbitMQPublisher, Depends(get_rabbitmq_publisher)],
+    # Inyectamos el publisher a través del contenedor
+    publisher: Annotated[RabbitMQPublisher, Depends(get_rabbitmq_publisher)], # <-- DEL CONTENEDOR
 ):
     """
     Endpoint para crear un nuevo usuario.
@@ -129,7 +100,8 @@ async def create_user(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: str,
-    db_session: Annotated[Session, Depends(get_db_session)],
+    # Inyectamos el repositorio a través del contenedor
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)], # <-- INTERFACE desde contenedor
     # En una implementación más avanzada con DI container, inyectarías el handler directamente
     # en lugar de crear el repo aquí.
 ):
@@ -141,13 +113,13 @@ async def get_user(
     Flujo:
     1. Validación del ID (UUID)
     2. Creación del query GetUserQuery
-    3. Obtención del repositorio con sesión de BD
-    4. Ejecución del handler de consulta
+    3. *** ELIMINADO: Obtención manual del repositorio ***
+    4. Ejecución del handler de consulta (lógica de aplicación)
     5. Conversión a respuesta
 
     Args:
         user_id (str): El identificador único del usuario.
-        db_session (Session): La sesión de base de datos inyectada.
+        user_repo (UserRepository): El repositorio de usuarios inyectado (interfaz).
 
     Returns:
         UserResponse: La información del usuario solicitado.
@@ -164,13 +136,15 @@ async def get_user(
     # 2. Crear el objeto Query
     query = GetUserQuery(user_id=str(user_id_uuid))
 
-    # 3. Obtener el repositorio (adaptador de infraestructura)
-    user_repository = SQLAlchemyUserRepository(db_session)
+    # *** SECCION MODIFICADA ***
+    # 3. ELIMINADO: Obtener el repositorio manualmente.
+    #    Ahora se inyecta directamente como `user_repo: UserRepository`.
 
     try:
         # 4. Ejecutar el handler de consulta (lógica de aplicación)
         # Este es el cambio clave: usamos el handler en lugar de llamar directamente al repo
-        user_domain: User = handle_get_user(query, user_repository)
+        # y pasamos la interfaz inyectada.
+        user_domain: User = handle_get_user(query, user_repo) # <-- Pasamos la interfaz
 
         # 5. Verificar si el usuario fue encontrado
         if not user_domain:
@@ -202,8 +176,8 @@ async def get_user(
 # 2. `Depends`: Mecanismo de inyección de dependencias de FastAPI.
 # 3. `Annotated`: Sintaxis moderna de Python/FastAPI para tipar dependencias.
 # 4. `UserCreateRequest` y `UserResponse`: Esquemas Pydantic para validar y estructurar datos.
-# 5. `get_rabbitmq_publisher`: Una dependencia personalizada que maneja la creación y cierre del publisher.
-# 6. `get_db_session`: La dependencia del generador de sesiones de BD definida en database.py.
+# 5. *** MODIFICADO: `get_rabbitmq_publisher` se obtiene ahora del `di_container`. ***
+# 6. *** ELIMINADO: `get_db_session` ya no se usa directamente aquí. ***
 # 7. `@router.post("/")`: Define el endpoint POST para /users (relativo al prefijo /api/v1/users).
 # 8. `@router.get("/{user_id}")`: Define el endpoint GET para /users/{user_id}.
 # 9. `response_model`: Especifica el esquema de la respuesta, lo que permite validación y documentación automática.
@@ -212,13 +186,14 @@ async def get_user(
 # 12. Asincronía: Los endpoints son funciones `async`, aprovechando las capacidades de FastAPI.
 # 13. Separación CQRS clara:
 #     - POST /users -> Crea comando -> Publica en RabbitMQ (Escritura).
-#     - GET /users/{id} -> Consulta directa al repositorio (Lectura).
-# 14. Adaptadores: Usa RabbitMQPublisher y SQLAlchemyUserRepository como adaptadores de infraestructura.
+#     - GET /users/{id} -> Consulta directa al handler/repositorio (Lectura).
+# 14. *** MODIFICADO: Adaptadores: Ahora se obtienen a través del `di_container`, no se importan directamente. ***
 # 15. Independencia del dominio: Este archivo no importa la lógica del handler directamente.
-#     La comunicación es a través de comandos/repositorios.
+#     La comunicación es a través de comandos/queries y handlers, que operan con interfaces.
 
 # Rol en la Arquitectura
 # Adaptador de entrada: Convierte requests HTTP en acciones del sistema
 # Implementación CQRS: Separa comandos (POST) de consultas (GET)
 # Orquestación: Coordina adaptadores de mensajería y persistencia
 # Validación y serialización: Usa Pydantic para estructurar datos
+# *** MEJORA: Desacoplado de infraestructura mediante inyección de dependencias centralizada. ***

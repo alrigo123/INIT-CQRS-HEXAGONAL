@@ -11,17 +11,19 @@ from ...domain.repositories import TokenRepository
 from ...domain.models import Token
 # Importa el modelo de SQLAlchemy (adaptador)
 from .auth_model import TokenModel
+from datetime import timezone
+from datetime import datetime
 
 class SQLAlchemyTokenRepository(TokenRepository):
     """
     Implementación concreta del TokenRepository usando SQLAlchemy.
     Esta clase adapta las operaciones del dominio a las operaciones
     específicas de la base de datos mediante SQLAlchemy.
-    
+
     PATRÓN DE DISEÑO: Adapter (Adaptador)
     Convierte la interfaz del dominio (`TokenRepository`) en una interfaz compatible
     con la infraestructura (SQLAlchemy).
-    
+
     ARQUITECTURA: Adaptador Secundario en Arquitectura Hexagonal
     Implementa un puerto definido por el dominio.
     """
@@ -32,7 +34,7 @@ class SQLAlchemyTokenRepository(TokenRepository):
 
         Args:
             db_session (Session): La sesión activa de SQLAlchemy para interactuar con la BD.
-            
+
         PATRÓN DE DISEÑO: Constructor
         Inicializa el estado del objeto con sus dependencias.
         """
@@ -44,7 +46,7 @@ class SQLAlchemyTokenRepository(TokenRepository):
 
         Args:
             token (Token): La instancia de Token del dominio a guardar.
-            
+
         PATRÓN DE DISEÑO: Data Transfer Object (DTO) - Conversión
         Conviierte un objeto de dominio en un objeto de persistencia.
         """
@@ -54,9 +56,10 @@ class SQLAlchemyTokenRepository(TokenRepository):
             user_id=token.user_id,
             access_token=token.access_token,
             expires_at=token.expires_at,
+            # expires_at=token.expires_at,
             # created_at se establece por defecto en el modelo
         )
-        
+
         # Añade el modelo a la sesión
         self._db_session.add(token_model)
         try:
@@ -76,25 +79,31 @@ class SQLAlchemyTokenRepository(TokenRepository):
 
         Returns:
             Optional[Token]: La instancia del Token del dominio si se encuentra, None en caso contrario.
-            
+
         PATRÓN DE DISEÑO: Data Transfer Object (DTO) - Conversión
         Convierte un objeto de persistencia en un objeto de dominio.
         """
         # Realiza la consulta usando SQLAlchemy
         token_model: TokenModel = self._db_session.query(TokenModel).filter(TokenModel.access_token == access_token).first()
-        
+
         # Si no se encuentra, retorna None
         if not token_model:
             return None
-            
+
+                # *** MODIFICACIÓN CRUCIAL ***
+
+        # expires_at_aware = datetime.fromisoformat(token_model.expires_at.isoformat())  # Esto crea un datetime aware
+        expires_at_aware = token_model.expires_at.replace(tzinfo=timezone.utc)
+
         # Si se encuentra, crea y retorna una instancia del dominio
         token_domain = Token(
             token_id=str(token_model.id),
             user_id=str(token_model.user_id),
             access_token=token_model.access_token,
-            expires_at=token_model.expires_at
+            # expires_at=token_model.expires_at,
+            expires_at=expires_at_aware
         )
-        
+
         return token_domain
 
     def delete(self, token_id: str) -> bool:
@@ -109,11 +118,11 @@ class SQLAlchemyTokenRepository(TokenRepository):
         """
         # Busca el modelo por ID
         token_model: TokenModel = self._db_session.query(TokenModel).filter(TokenModel.id == token_id).first()
-        
+
         # Si no se encuentra, retorna False
         if not token_model:
             return False
-            
+
         # Si se encuentra, lo elimina de la sesión
         self._db_session.delete(token_model)
         try:
