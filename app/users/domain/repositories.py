@@ -1,4 +1,3 @@
-# app/users/domain/repositories.py
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -8,48 +7,21 @@ from .models import User
 class UserRepository(ABC):
     """
     Interfaz abstracta para el repositorio de Usuarios.
-    
     Esta es una ABSTRACCIÓN que define qué operaciones de persistencia
     necesita el dominio de usuarios, sin especificar cómo se implementan.
-    
-    PATRÓN DE DISEÑO: Repository Pattern (Patrón Repositorio)
-    PATRÓN DE DISEÑO: Interface Segregation (Segregación de Interfaces)
-    
-    ARQUITECTURA: Puerto secundario en Arquitectura Hexagonal
-    El dominio define la interfaz, la infraestructura la implementa.
-    
-    PRINCIPIO SOLID: Inversión de Dependencias
-    El dominio depende de abstracciones, no de implementaciones concretas.
     """
 
     @abstractmethod
     def save(self, user: User) -> None:
-        """
-        Guarda un usuario en el repositorio.
-
-        Args:
-            user (User): La instancia de User a guardar.
-
-        Raises:
-            # Puede lanzar excepciones específicas definidas en el dominio
-            # o dejárselas a la implementación concreta.
-            
-        MEJORA SUGERIDA: Definir excepciones específicas de dominio para errores de persistencia
-        """
+        """ Guarda un usuario en el repositorio. """
         pass
+
 
     @abstractmethod
     def get_by_id(self, user_id: str) -> Optional[User]:
         """
         Obtiene un usuario por su ID.
-
-        Args:
-            user_id (str): El identificador único del usuario.
-
-        Returns:
-            User | None: La instancia del User si se encuentra, None en caso contrario.
-            
-        MEJORA SUGERIDA: Considerar sobrecargas para diferentes tipos de ID
+        Returns: User | None: La instancia del User si se encuentra, None en caso contrario.
         """
         pass
 

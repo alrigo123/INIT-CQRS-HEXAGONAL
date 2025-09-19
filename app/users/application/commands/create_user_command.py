@@ -1,4 +1,3 @@
-# app/users/application/commands/create_user_command.py
 from dataclasses import dataclass
 from typing import Optional # Asegúrate de tener esta importación
 
@@ -6,26 +5,16 @@ from typing import Optional # Asegúrate de tener esta importación
 class CreateUserCommand:
     """
     Comando para crear un nuevo usuario.
-    
     Este comando representa una INTENCIÓN de escritura en el sistema.
     Es un objeto de transferencia de datos (DTO) que encapsula los datos
     necesarios para la operación de creación.
-    
-    PATRÓN DE DISEÑO: Command Pattern (Patrón Comando)
-    PATRÓN DE DISEÑO: Data Transfer Object (DTO)
-    
-    ARQUITECTURA: Parte de la capa de Aplicación en CQRS
-    Representa un comando de escritura que se puede serializar y enviar.
-    
-    INMUTABILIDAD: frozen=True garantiza que el comando no cambie después de crearlo.
-    Esto es importante para la consistencia y para mensajería.
     """
     
-    # Atributos del comando - solo datos necesarios para la operación
+    # Atributos del comando
     name: str
     email: str
     password: str
-    user_id: Optional[str] = None # Hacerlo opcional es buena práctica
+    user_id: Optional[str] = None
 
 # --- Notas sobre la implementación ---
 # 1. `@dataclass`: Es una forma concisa de crear clases que principalmente 

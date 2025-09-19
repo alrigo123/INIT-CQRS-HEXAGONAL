@@ -7,24 +7,11 @@ from dataclasses import dataclass # Para crear clases de datos inmutables fácil
 
 @dataclass(frozen=True) # frozen=True hace que la instancia sea inmutable después de su creación
 class ValidateTokenQuery:
-    """
-    Consulta para validar un token de acceso.
-    Este comando encapsula los datos necesarios para la operación de validación.
-    Es inmutable y se puede serializar fácilmente.
-    
-    Atributos:
-        access_token (str): El valor del token de acceso a validar.
-        
-    PATRÓN DE DISEÑO: Query Object (Objeto de Consulta)
-    Encapsula los criterios para una consulta específica.
-    
-    PATRÓN DE DISEÑO: DTO (Data Transfer Object)
-    Se usa para transferir datos entre capas o sistemas.
-    
-    CQRS: Es una consulta, parte del flujo de lectura (Read Side).
-    """
+    """ Consulta para validar un token de acceso. """
 
     access_token: str # Campo requerido: El token que se quiere validar.
+
+
 
 # --- Notas sobre la implementación ---
 # 1. `@dataclass(frozen=True)`: Hace que el objeto sea inmutable.

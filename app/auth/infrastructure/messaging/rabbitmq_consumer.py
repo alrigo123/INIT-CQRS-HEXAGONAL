@@ -9,17 +9,12 @@ import traceback # Para imprimir trazas de error detalladas
 import time # Para implementar reintentos
 import os # Para acceder a variables de entorno
 from pika.exceptions import AMQPConnectionError # Para manejar errores específicos de conexión
-
-# Importamos las dependencias de auth
-# *** MEJORA FUTURA: Estas importaciones directas rompen la arquitectura.
-# Idealmente, se inyectarían adaptadores configurados externamente.
-from app.auth.infrastructure.persistence.database import SessionLocal as AuthSessionLocal, create_tables
-from app.auth.infrastructure.persistence.repositories import SQLAlchemyTokenRepository
-
-# Para simular la generación de tokens
-# *** MEJORA FUTURA: Estas funciones deberían estar en infraestructura o ser inyectadas ***
 import secrets
 from datetime import datetime, timedelta
+
+# Importamos las dependencias de auth
+from app.auth.infrastructure.persistence.database import SessionLocal as AuthSessionLocal, create_tables
+from app.auth.infrastructure.persistence.repositories import SQLAlchemyTokenRepository
 
 # --- Configuración de RabbitMQ ---
 # Se usa una variable de entorno para la configuración.
@@ -27,7 +22,6 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 AUTH_COMMANDS_QUEUE = "auth_commands" # Cola para comandos/eventos específicos de auth
 
 # --- Funciones auxiliares ---
-# *** MEJORA FUTURA: Mover a un módulo de servicios de infraestructura ***
 def generate_access_token() -> str:
     """Genera un token de acceso."""
     return secrets.token_urlsafe(32)
@@ -37,9 +31,8 @@ def calculate_expires_at(hours: int = 1) -> datetime:
     return datetime.utcnow() + timedelta(hours=hours)
 
 # --- Lógica de procesamiento de mensajes ---
-# *** MEJORA: Este consumidor actualmente no procesa ningún comando específico de auth.
-# Se mantiene como base para futuros comandos o eventos como `UserLoggedIn`.
 
+# *** Este consumidor actualmente no procesa ningún comando específico de auth. Se mantiene como base para futuros comandos o eventos como `UserLoggedIn`.
 def dummy_command_processor(command_data: dict):
     """
     Procesador de ejemplo para comandos genéricos.
@@ -48,16 +41,9 @@ def dummy_command_processor(command_data: dict):
     """
     print(f"[.] Procesando comando genérico con datos: {command_data}")
 
+
 def callback(ch, method, properties, body):
-    """
-    Función callback que se ejecuta cada vez que se recibe un mensaje de RabbitMQ.
-    
-    PATRÓN DE DISEÑO: Callback
-    Función que se pasa como argumento para ser llamada cuando ocurre un evento.
-    
-    ARQUITECTURA: Adaptador Primario en Arquitectura Hexagonal
-    Recibe un mensaje externo (RabbitMQ) y lo convierte en una acción interna.
-    """
+    """ Función callback que se ejecuta cada vez que se recibe un mensaje de RabbitMQ. """
     try:
         # Decodifica el cuerpo del mensaje de bytes a string
         message_str = body.decode('utf-8')
@@ -69,9 +55,7 @@ def callback(ch, method, properties, body):
         command_data = message_data.get("data")
 
         # Procesa el comando según su tipo
-        # *** ACTUALIZADO: Eliminada la lógica de RegisterUserCommand ***
         if command_type and command_data:
-            # *** MEJORA: En lugar de if/else, se podría usar un diccionario de handlers ***
             print(f"[.] Recibido comando de tipo '{command_type}'. Procesando...")
             # Llama a un procesador genérico o específico si existiera
             dummy_command_processor(command_data)
@@ -80,7 +64,6 @@ def callback(ch, method, properties, body):
             print(f"[!] Unknown command type or missing data in message: {message_data}")
 
         # Enviar ACK manualmente para confirmar que el mensaje fue procesado
-        # Esto es crucial para la fiabilidad de los mensajes.
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     except json.JSONDecodeError as e:
@@ -95,23 +78,15 @@ def callback(ch, method, properties, body):
         # Rechaza el mensaje sin reencolarlo (se pierde)
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
+
 def start_consuming_auth():
-    """
-    Inicia el consumidor de comandos/eventos de RabbitMQ para el contexto 'auth'.
-    
-    PATRÓN DE DISEÑO: Service Layer (capa de servicio de infraestructura)
-    Orquesta la conexión y el consumo de mensajes.
-    
-    ARQUITECTURA: Adaptador Primario en Arquitectura Hexagonal
-    Punto de entrada para eventos externos dirigidos a este contexto.
-    """
+    """ Inicia el consumidor de comandos/eventos de RabbitMQ para el contexto 'auth'."""
     # Asegurarse de que las tablas de la BD de auth existen
-    # *** PROBLEMA: Importación directa ***
     create_tables()
 
     # --- Lógica de conexión con reintentos ---
     max_retries = 5
-    retry_delay = 5  # segundos
+    retry_delay = 5
 
     # Bucle de reintentos para conectar a RabbitMQ
     connection = None
@@ -172,12 +147,4 @@ def start_consuming_auth():
             except Exception as e:
                 print(f"[!] Error al cerrar la conexión: {e}")
 
-# --- Notas sobre la implementación ---
-# 1. Se eliminó toda la lógica relacionada con `RegisterUserCommand`.
-# 2. Se eliminó la función `create_user_in_users_context` que rompía la arquitectura.
-# 3. Se eliminó la función `process_register_user_command`.
-# 4. Se mantuvieron las funciones auxiliares de infraestructura (`generate_access_token`).
-# 5. Se actualizó el `callback` para no procesar `RegisterUserCommand`.
-# 6. Se mejoró el manejo de errores y cierre de recursos en `start_consuming_auth`.
-# 7. *** PROBLEMA PENDIENTE: Importaciones directas de infraestructura.
-# 8. *** MEJORA FUTURA: Implementar procesadores específicos para comandos/eventos reales de `auth`.
+

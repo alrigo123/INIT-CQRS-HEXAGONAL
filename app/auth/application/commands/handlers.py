@@ -8,26 +8,16 @@ Esta capa contiene la lógica de coordinación entre:
 
 Los handlers son los "casos de uso" en una arquitectura limpia.
 Orquestan el flujo de una operación específica.
-
-Principios aplicados:
-- Inyección de dependencias (reciben dependencias como parámetros)
-- Separación de responsabilidades (cada handler hace una cosa)
-- Manejo de errores específico (capturan y relanzan excepciones adecuadas)
-- Independencia de frameworks (no importan FastAPI, SQLAlchemy, etc.)
-- Alta cohesión, bajo acoplamiento
-
-PATRÓN DE DISEÑO: Use Case Interactor (del Clean Architecture)
-PATRÓN DE DISEÑO: Dependency Injection (Inyección de Dependencias)
 """
 
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Callable
-import bcrypt # <-- Añade esta importación al inicio del archiv
+import bcrypt
 
 # Importamos modelos y repositorios de dominio
-# Importamos desde `users` porque necesitamos verificar usuarios existentes
 from app.users.domain.repositories import UserRepository
+
 # Importamos del propio dominio `auth`
 from app.auth.domain.repositories import TokenRepository
 from app.auth.domain.models import Token
@@ -39,59 +29,31 @@ def handle_login_user(
     command: LoginCommand,
     user_repository: UserRepository,
     token_repository: TokenRepository,
-    # verify_password_fn: Callable[[str, str], bool],
-    verify_password_fn: Callable[[str, str], bool], # <-- Ahora (misma firma, pero la implementación será segura)
+    verify_password_fn: Callable[[str, str], bool],
     generate_token_fn: Callable[[], str],
     calculate_expires_fn: Callable[[int], datetime]
 ):
     """
     Handler para el comando LoginCommand.
-    
     CASO DE USO PRINCIPAL: Autenticar usuario y generar token de acceso.
-    
-    Flujo completo:
-    1. Busca usuario por email (cross-context: users domain)
-    2. Verifica contraseña usando función inyectada
-    3. Genera nuevo token usando función inyectada
-    4. Calcula expiración usando función inyectada
-    5. Crea entidad Token (dominio)
-    6. Guarda token usando repositorio (puerto)
-    7. Retorna token generado
-    
-    Args:
-        command (LoginCommand): Comando con credenciales
-        user_repository (UserRepository): Puerto para buscar usuarios (desde contexto `users`)
-        token_repository (TokenRepository): Puerto para guardar tokens (desde contexto `auth`)
-        verify_password_fn (Callable): Función para verificar passwords (inyectada)
-        generate_token_fn (Callable): Función para generar tokens (inyectada)
-        calculate_expires_fn (Callable): Función para calcular expiración (inyectada)
-        
-    Returns:
-        str: Token de acceso generado si login exitoso
-        
+    Returns: str: Token de acceso generado si login exitoso
     Raises:
         ValueError: Si credenciales inválidas (mensaje genérico por seguridad)
         RuntimeError: Si hay un error interno (búsqueda, verificación, persistencia)
-        
-    PATRÓN DE DISEÑO: Transaction Script (para este caso de uso simple)
-    PATRÓN DE DISEÑO: Service Layer (capa de servicio de aplicación)
     """
-    # 1. Buscar el usuario por email en el repositorio del contexto `users`
+    # Buscar el usuario por email en el repositorio del contexto `users`
     try:
         user = user_repository.get_by_email(command.email)
     except Exception as e:
         # Error interno al buscar el usuario
         raise RuntimeError(f"Error al buscar el usuario en el repositorio: {e}") from e
 
-    # 2. Verificar si el usuario existe (seguridad: mensaje genérico)
-    # Si no existe, se lanza el mismo error que si la contraseña es incorrecta
-    # para evitar revelar si un email está registrado.
+    # Verificar si el usuario existe (seguridad: mensaje genérico)
     if not user:
         raise ValueError("Credenciales inválidas.")
 
-    # 3. Verificar la contraseña usando la función inyectada
+    # Verificar la contraseña usando la función inyectada
     try:
-        # Se asume que `user.hashed_password` existe en el modelo de `users`
         if not verify_password_fn(command.password, user.hashed_password):
             raise ValueError("Credenciales inválidas.")
     except ValueError:
@@ -101,7 +63,7 @@ def handle_login_user(
         # Error interno al verificar la contraseña
         raise RuntimeError(f"Error al verificar la contraseña: {e}") from e
 
-    # 4. Generar token de acceso usando la función inyectada
+    # Generar token de acceso usando la función inyectada
     try:
         access_token = generate_token_fn()
         if not access_token:
@@ -113,7 +75,7 @@ def handle_login_user(
         # Error interno al generar el token
         raise RuntimeError(f"Error al generar el token de acceso: {e}") from e
 
-    # 5. Calcular expiración usando la función inyectada
+    # Calcular expiración usando la función inyectada
     try:
         expires_at = calculate_expires_fn(1)  # Expira en 1 hora
         print(f"[DEBUG] expires_at creado: {expires_at}, tzinfo: {expires_at.tzinfo}") # Para depurar
@@ -121,7 +83,7 @@ def handle_login_user(
         # Error interno al calcular la expiración
         raise RuntimeError(f"Error al calcular la expiración del token: {e}") from e
 
-    # 6. Crear la entidad de dominio Token
+    # Crear la entidad de dominio Token
     # Esta es la parte donde se aplica la lógica de negocio del dominio `auth`
     token_id = str(uuid.uuid4()) # Generamos un ID único para el token
     token = Token(
@@ -131,50 +93,44 @@ def handle_login_user(
         expires_at=expires_at # Fecha de expiración calculada
     )
 
-    # 7. Guardar el token usando el repositorio del contexto `auth`
+    # Guardar el token usando el repositorio del contexto `auth`
     try:
         token_repository.save(token)
     except Exception as e:
         # Error interno al guardar el token
         raise RuntimeError(f"Error al guardar el token en el repositorio: {e}") from e
 
-    # 8. Retornar el token generado al cliente
+    # Retornar el token generado al cliente
     return access_token
 
 
-# --- Funciones auxiliares (simulaciones, en producción usar librerías reales) ---
-# Estas funciones deben estar en la capa de infraestructura y ser inyectadas.
+# --- Funciones auxiliares ---
 def secure_verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verifica una contraseña contra un hash usando bcrypt.
     *** IMPLEMENTACIÓN SEGURA ***
     """
     try:
-        # bcrypt.checkpw requiere bytes
         return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
     except Exception as e:
-        # Loggear el error si tienes un logger
         print(f"[!] Error al verificar contraseña con bcrypt: {e}")
         # Devolver False en caso de error interno para no romper el flujo
         return False
 
+
 def generate_access_token() -> str:
-    """Genera un token de acceso seguro.
-    
-    PATRÓN DE DISEÑO: Factory Method (Método Fábrica)
-    Encapsula la lógica de creación de tokens.
-    """
+    """ Genera un token de acceso seguro. """
     import secrets
     return secrets.token_urlsafe(32)
 
+
 def calculate_expires_at(hours: int = 1) -> datetime:
-    """Calcula la fecha de expiración.
-    
-    PATRÓN DE DISEÑO: Factory Method (Método Fábrica)
-    Encapsula la lógica de cálculo de fechas.
-    """
+    """ Calcula la fecha de expiración. """
     from datetime import datetime, timedelta
     return datetime.now(timezone.utc) + timedelta(hours=hours)
+
+
+
 
 # --- Notas sobre la implementación ---
 # 1. Inyección de Dependencias: Recibe repositorios y funciones como parámetros.

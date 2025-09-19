@@ -1,24 +1,14 @@
-# app/auth/infrastructure/persistence/database.py
-"""
-Módulo de configuración de la base de datos para el contexto de autenticación (auth).
-Este módulo define la conexión a la base de datos, la sesión y la base declarativa
-para los modelos de SQLAlchemy específicos del contexto auth.
-También incluye la lógica para crear las tablas definidas en los modelos de auth.
-"""
 import os
 from sqlalchemy import create_engine
-# Importamos declarative_base por si necesitamos crear una local
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
 # --- Configuración de la Base de Datos ---
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://myapp_user:myapp_password@db:5432/myapp_db")
-
 # --- Creación del "engine" ---
 engine = create_engine(DATABASE_URL, echo=True)
 
 # --- Inicialización de Base ---
-# Inicializamos Base como None. Se intentará importar o crear.
 Base = None
 
 # --- Intento de importar Base desde users ---
@@ -35,11 +25,9 @@ except ModuleNotFoundError as mnfe:
     print(f"[ERROR CRITICO] No se encontró el modulo al intentar importar Base desde users (ModuleNotFoundError: {mnfe}).")
     # No relanzamos inmediatamente, intentamos crear una local
     Base = declarative_base()
-    # O podrías relanzar si prefieres que falle aquí: raise
 except Exception as e:
     print(f"[ERROR INESPERADO] Error al intentar importar Base desde users: {e}. Creando Base local para auth.")
     Base = declarative_base()
-    # O podrías relanzar si prefieres que falle aquí: raise
 
 # --- Verificación final de Base ---
 if Base is None:
@@ -50,19 +38,16 @@ if Base is None:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db_session() -> Session:
-    """
-    Generador de dependencias para obtener una sesión de base de datos.
-    """
+    """ Generador de dependencias para obtener una sesión de base de datos. """
     db_session = SessionLocal()
     try:
         yield db_session
     finally:
         db_session.close()
 
+
 def create_tables():
-    """
-    Crea todas las tablas definidas en los modelos que heredan de Base.
-    """
+    """ Crea todas las tablas definidas en los modelos que heredan de Base. """
     try:
         # Importamos el modelo para que se registre en Base.metadata
         from .auth_model import TokenModel
@@ -81,6 +66,7 @@ def create_tables():
     except Exception as e:
         print(f"[ERROR] Fallo al crear tablas para auth: {e}")
         raise
+
 
 # --- Notas sobre la implementación ---
 # 1. Se inicializa `Base = None` para tener un punto de control.

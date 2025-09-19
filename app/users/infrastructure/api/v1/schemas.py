@@ -1,7 +1,6 @@
 # SCHEMAS (ESQUEMAS DE PYDANTIC)
 from pydantic import BaseModel, EmailStr, Field
 
-
 # --- Esquemas para Solicitudes (Requests) ---
 class UserCreateRequest(BaseModel):
     """ Esquema para validar los datos de entrada al crear un usuario. """

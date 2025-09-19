@@ -5,12 +5,7 @@ from typing import Optional
 
 # --- Esquemas para Solicitudes (Requests) ---
 class LoginRequest(BaseModel):
-    """
-    Esquema para validar los datos de entrada al iniciar sesión.
-    
-    PATRÓN DE DISEÑO: Data Transfer Object (DTO)
-    Se usa para transferir datos entre la API y la capa de aplicación.
-    """
+    """ Esquema para validar los datos de entrada al iniciar sesión. """
     email: EmailStr = Field(..., description="El correo electrónico del usuario.")
     password: str = Field(..., description="La contraseña del usuario.")
 
@@ -34,8 +29,6 @@ class ValidateTokenRequest(BaseModel):
         }
 
 # --- Esquemas para Respuestas (Responses) ---
-# Estos esquemas se usan para estructurar y serializar los datos que se envían como respuesta HTTP.
-
 class LoginResponse(BaseModel):
     """ Esquema para estructurar los datos de salida al iniciar sesión. """
     access_token: str = Field(..., description="El token de acceso generado.")
@@ -65,6 +58,7 @@ class ValidateTokenResponse(BaseModel):
         }
         
         
+
 
 # --- Notas sobre la implementación ---
 # `BaseModel` de Pydantic: La clase base para todos los esquemas.

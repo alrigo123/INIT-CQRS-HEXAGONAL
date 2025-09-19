@@ -60,10 +60,11 @@ class Token:
         Verifica si el token ha expirado según la hora actual UTC.
         Regla de negocio: Comparación con tiempo actual para determinar validez.
         """
-        # Obtener 'ahora' en UTC (aware)
+        
+        # Obtener 'ahora'
         now = datetime.now(timezone.utc)
         
-        # Obtener la fecha de expiración del token (podría ser naive o aware)
+        # Obtener la fecha de expiración del token
         expires_at = self._expires_at
 
         # --- LÓGICA DE NORMALIZACIÓN ---
@@ -71,11 +72,10 @@ class Token:
         if expires_at.tzinfo is None:
             # Es naive, lo convertimos a aware asumiendo UTC
             expires_at = expires_at.replace(tzinfo=timezone.utc)
-        # Si `expires_at` ya es aware (por ejemplo, timezone.utc), lo dejamos así.
-        # (Si fuera de otra zona horaria, habría que hacer expires_at = expires_at.astimezone(timezone.utc))
 
         # Ahora ambos `now` y `expires_at` son aware y se pueden comparar
         return expires_at <= now
+
 
     def __eq__(self, other) -> bool:
         """
@@ -89,7 +89,9 @@ class Token:
     def __repr__(self) -> str:
         """ Representación del objeto Token para debugging. """
         return f"<Token(id='{self.id}', user_id='{self.user_id}', expires_at='{self.expires_at}')>"
-    
+
+
+
 # Rol en la Arquitectura
 # Dominio puro: No tiene dependencias externas
 # Reglas de negocio: Validaciones y comportamiento del token
