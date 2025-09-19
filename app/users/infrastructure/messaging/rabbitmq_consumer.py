@@ -13,16 +13,14 @@ from ...application.commands.create_user_command import CreateUserCommand
 
 # Importamos el handler que procesará el comando
 # Este es el handler de aplicación que ejecutará la lógica de negocio
+# *** ACTUALIZADO ***: Asegúrate de importar el handler CORRECTO (el actualizado)
 from ...application.commands.handlers import handle_create_user
 
-# Importamos dependencias necesarias para el handler
-# Estas son las implementaciones concretas de infraestructura que el handler necesita
-from ...infrastructure.persistence.database import SessionLocal, create_tables
-from ...infrastructure.persistence.repositories import SQLAlchemyUserRepository
-
-# Para simular el hashing de contraseña (en una implementación real, usar una librería como bcrypt)
-# ADVERTENCIA: hashlib no es seguro para passwords en producción
-import hashlib
+# *** NUEVO ***: Importamos el DI Container para obtener dependencias
+# *** ESTO REEMPLAZA las importaciones directas de SessionLocal y SQLAlchemyUserRepository ***
+from app.shared.di_container import get_user_repository
+# Importamos la interfaz para el tipado y claridad
+from app.users.domain.repositories import UserRepository
 
 # Para manejar errores específicos de conexión de RabbitMQ
 from pika.exceptions import AMQPConnectionError
@@ -38,6 +36,7 @@ USER_COMMANDS_QUEUE = "user_commands"
 def secure_hash_password(password: str) -> str:
     """
     Hashea una contraseña usando bcrypt.
+    *** IMPLEMENTACIÓN SEGURA ***
     """
     try:
         # bcrypt.gensalt() genera un salt aleatorio automáticamente
@@ -64,7 +63,7 @@ def process_create_user_command(command_data: Dict[str, Any]):
     """
     print(f"[.] Processing CreateUserCommand for '{command_data['name']}'")
     
-     # --- CAMBIO CLAVE: HASHEAR LA CONTRASEÑA AQUÍ ---
+    # --- CAMBIO CLAVE: HASHEAR LA CONTRASEÑA AQUÍ ---
     try:
         plain_password = command_data["password"]
         # Usamos la nueva función segura
@@ -76,39 +75,36 @@ def process_create_user_command(command_data: Dict[str, Any]):
         return
     # --- FIN CAMBIO CLAVE ---
 
-    # 1. Crear el objeto comando desde los datos deserializados
+    # 1. Crear el comando a partir de los datos deserializados
     # Reconstruimos el comando del dominio a partir de los datos recibidos
+    # *** ACTUALIZADO ***: Usamos la contraseña hasheada
     command = CreateUserCommand(
         name=command_data["name"],
         email=command_data["email"],
-        password=hashed_password,
+        password=hashed_password, # <-- AHORA ES EL HASH
+        user_id=command_data.get("user_id") # Incluimos user_id si está presente
     )
 
-    # 2. Obtener dependencias necesarias para el handler
-    # En una arquitectura más avanzada, esto vendría de un contenedor de inyección de dependencias.
-    # Aquí creamos las dependencias manualmente siguiendo el principio de inversión de dependencias
-    
-    # Obtener una sesión de base de datos del pool
-    db_session = SessionLocal()
-    
-    # Crear el repositorio con la sesión (adaptador concreto de persistencia)
-    user_repository = SQLAlchemyUserRepository(db_session)
-    
-     # Creamos una función "dummy" para pasar al handler.
-    # El handler espera una función que hashea, pero la contraseña ya está hasheada.
-    def pass_through_hashed_password(pwd: str) -> str:
-        # Simplemente devuelve la contraseña que recibe (que ya es el hash)
-        return pwd
-    
-    # Función para hashear contraseñas (adaptador concreto de seguridad)
-    # MEJORA SUGERIDA: Usar implementación real de hashing seguro
-    hash_password_fn = pass_through_hashed_password
+    # *** MODIFICADO ***: Obtener dependencias del DI Container
+    # En lugar de crear manualmente SessionLocal y SQLAlchemyUserRepository,
+    # obtenemos directamente la interfaz UserRepository del contenedor.
+    try:
+        # *** NUEVO ***: Usar el contenedor DI para obtener UserRepository
+        user_repository: UserRepository = get_user_repository() # <-- DEL CONTENEDOR
+        print("[.] UserRepository obtenido del DI container.")
+    except Exception as e:
+        print(f"[!] Error al obtener UserRepository del DI container: {e}")
+        # Manejar error de inicialización de dependencias
+        return # O podrías relanzar como RuntimeException
+
+    # *** ELIMINADO ***: Ya no creamos db_session ni SQLAlchemyUserRepository aquí.
+    # *** ELIMINADO ***: Ya no creamos hash_password_fn aquí.
 
     try:
-        # 3. Invocar al handler de aplicación
+        # *** MODIFICADO ***: Invocar al handler de aplicación
         # Pasamos el comando y las dependencias inyectadas
-        # Este es el punto donde se ejecuta la lógica de negocio
-        user_id = handle_create_user(command, user_repository)
+        # *** ACTUALIZADO ***: Ya no pasamos hash_password_fn
+        user_id = handle_create_user(command, user_repository) # <-- INYECTADO
         print(f"[.] Successfully created user with ID: {user_id}")
     except Exception as e:
         # Manejar errores del handler (validaciones, problemas de BD, etc.)
@@ -117,10 +113,14 @@ def process_create_user_command(command_data: Dict[str, Any]):
         traceback.print_exc()
         # En un sistema real, podrías reencolar el mensaje, enviarlo a una cola de dead-letter, etc.
         # MEJORA SUGERIDA: Implementar dead-letter exchanges para manejo de errores
-    finally:
-        # 4. Cerrar la sesión de la base de datos
-        # Es crucial cerrar sesiones para liberar conexiones del pool
-        db_session.close()
+    # finally:
+        # *** ELIMINADO ***: Ya no cerramos la sesión aquí.
+        # La gestión del ciclo de vida de la sesión (abrir/cerrar) ahora es responsabilidad
+        # del adaptador concreto (SQLAlchemyUserRepository) o del contenedor DI.
+        # El contenedor debería encargarse de cerrar la sesión cuando sea apropiado,
+        # por ejemplo, usando un generador o un mecanismo de scoped session.
+        # Por ahora, asumimos que el repositorio maneja su sesión internamente
+        # o que el contenedor la cierra correctamente después de usarla.
 
 def callback(ch, method, properties, body):
     """
@@ -156,10 +156,11 @@ def callback(ch, method, properties, body):
         # Procesamos solo los comandos que conocemos
         if command_type == "CreateUserCommand":
             # Corrección: pasar command_data, no command_ (había un error tipográfico)
+            # *** ACTUALIZADO ***: Llamamos a la función procesadora actualizada
             process_create_user_command(command_data)
         else:
             # Manejar comandos desconocidos o mensajes mal formados
-            print(f"[!] Unknown command type or missing  {command_type}")
+            print(f"[!] Unknown command type or missing data in message: {message_data}")
             # MEJORA SUGERIDA: Enviar a dead-letter queue para análisis posterior
 
         # 4. Enviar ACK manualmente para confirmar que el mensaje fue procesado
@@ -193,20 +194,22 @@ def start_consuming():
     """
     # Asegurarse de que las tablas de la BD existen
     # Esto es útil para asegurar que la infraestructura esté lista
+    # *** MEJORA SUGERIDA ***: Mover create_tables a un lugar centralizado o usar Alembic
+    # Importa la función create_tables para asegurar que las tablas existen
+    from ...infrastructure.persistence.database import create_tables
     create_tables()
 
+    
     # --- Nueva lógica de conexión con reintentos ---
     # Implementamos resiliencia con reintentos de conexión
     max_retries = 5  # Número máximo de intentos de conexión
     retry_delay = 5  # Segundos entre reintentos
 
+    connection = None
+    channel = None
     for attempt in range(1, max_retries + 1):
         try:
-            print(
-                f"[.] Intentando conectar a RabbitMQ (Intento {attempt}/{max_retries})..."
-            )
-            # 1. Conectarse a RabbitMQ
-            # Usar la variable de entorno RABBITMQ_URL
+            print(f"[.] Intentando conectar a RabbitMQ (Intento {attempt}/{max_retries})...")
             parameters = pika.URLParameters(RABBITMQ_URL)
             connection = pika.BlockingConnection(parameters)
             channel = connection.channel()
@@ -219,38 +222,56 @@ def start_consuming():
                 time.sleep(retry_delay)
             else:
                 print("[!] Todos los intentos de conexión a RabbitMQ fallaron.")
-                raise  # Relanzar la excepción si se agotaron los reintentos
+                # Lanzar la excepción para que el script principal pueda manejarla
+                raise 
         except Exception as e:
             print(f"[!] Error inesperado al conectar a RabbitMQ: {e}")
-            raise  # Relanzar cualquier otro error inesperado
+            raise  # Lanzar cualquier otro error inesperado
 
-    # 2. Declarar la cola (por si acaso el publisher aún no la ha creado)
-    # Aseguramos que la cola exista antes de consumir mensajes
-    channel.queue_declare(queue=USER_COMMANDS_QUEUE, durable=True)
+    if not connection or not channel:
+        print("[ERROR] No se pudo establecer conexión con RabbitMQ.")
+        return # Salir si no hay conexión
 
-    # 3. Configurar la calidad de servicio
-    # prefetch_count=1 limita a 1 mensaje no confirmado por consumidor
-    # Esto evita que un consumidor se sobrecargue con mensajes
-    channel.basic_qos(prefetch_count=1)
-
-    # 4. Configurar el consumidor
-    # Registramos nuestra función callback para manejar mensajes entrantes
-    channel.basic_consume(
-        queue=USER_COMMANDS_QUEUE, 
-        on_message_callback=callback, 
-        auto_ack=False  # Desactivamos auto-ack para control manual
-    )
-
-    print("[*] Waiting for messages. To exit press CTRL+C")
     try:
+        # 2. Declarar la cola (por si acaso el publisher aún no la ha creado)
+        # Aseguramos que la cola exista antes de consumir mensajes
+        channel.queue_declare(queue=USER_COMMANDS_QUEUE, durable=True)
+
+        # 3. Configurar la calidad de servicio
+        # prefetch_count=1 limita a 1 mensaje no confirmado por consumidor
+        # Esto evita que un consumidor se sobrecargue con mensajes
+        channel.basic_qos(prefetch_count=1)
+
+        # 4. Configurar el consumidor
+        # Registramos nuestra función callback para manejar mensajes entrantes
+        channel.basic_consume(queue=USER_COMMANDS_QUEUE, on_message_callback=callback, auto_ack=False)
+
+        print('[*] Waiting for messages. To exit press CTRL+C')
         # 5. Comenzar a consumir mensajes
         # Este método bloquea y continúa hasta que se interrumpa
         channel.start_consuming()
+        
     except KeyboardInterrupt:
         # Manejar interrupción manual (Ctrl+C)
         print("[-] Stopping consumer...")
         channel.stop_consuming()
         connection.close()
+    except Exception as e:
+        print(f"[!] Error inesperado en el consumidor: {e}")
+        traceback.print_exc()
+    finally:
+        # Asegura que los recursos se cierren correctamente
+        if channel and not channel.is_closed:
+            try:
+                channel.stop_consuming()
+            except Exception as e:
+                print(f"[!] Error al detener el consumo: {e}")
+        if connection and not connection.is_closed:
+            try:
+                connection.close()
+                print("[-] Conexión a RabbitMQ cerrada.")
+            except Exception as e:
+                print(f"[!] Error al cerrar la conexión: {e}")
 
 # --- Notas sobre la implementación ---
 # 1. `pika`: Librería cliente de RabbitMQ.
@@ -284,3 +305,20 @@ def start_consuming():
 # Resiliencia: Maneja reconexiones y errores de procesamiento
 # Implementación CQRS: Procesa comandos de manera asíncrona
 # Worker independiente: Se ejecuta como proceso separado del API
+
+# --- CAMBIOS REALIZADOS PARA INTEGRAR EL DI CONTAINER ---
+# *** NUEVO ***: Importación de `get_user_repository` desde `app.shared.di_container`.
+# *** NUEVO ***: Importación de la interfaz `UserRepository` para tipado.
+# *** ELIMINADO ***: Importación directa de `SessionLocal` (de `database.py`).
+# *** ELIMINADO ***: Importación directa de `SQLAlchemyUserRepository` (de `repositories.py`).
+# *** MODIFICADO ***: `process_create_user_command`:
+#     - *** ELIMINADO ***: Creación manual de `db_session = SessionLocal()`.
+#     - *** ELIMINADO ***: Creación manual de `user_repository = SQLAlchemyUserRepository(db_session)`.
+#     - *** NUEVO ***: Obtención de `UserRepository` desde el `di_container` usando `get_user_repository()`.
+#     - *** ELIMINADO ***: Creación manual de `hash_password_fn`.
+#     - *** MODIFICADO ***: Llamada a `handle_create_user` ahora recibe solo el comando y el repositorio inyectado.
+#     - *** ELIMINADO ***: Bloque `finally` para cerrar `db_session` manualmente.
+# *** BENEFICIO ***: El consumidor ahora depende de la interfaz `UserRepository`, no de la implementación concreta.
+#                   Esto cumple con el Principio de Inversión de Dependencias y desacopla este adaptador
+#                   de los detalles de la infraestructura (SQLAlchemy).
+# *** BENEFICIO ***: Centraliza la creación de dependencias en `app/shared/di_container.py`.
