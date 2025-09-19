@@ -30,3 +30,30 @@ coverage run -m pytest
 coverage report
 coverage html
 coverage report --include="app/*/domain/*"  (solo dominio)
+
+
+
+# Ejecuta todas las pruebas
+pytest
+
+# Ejecuta solo las pruebas del dominio de users
+pytest tests/users/domain/
+
+# Ejecuta con más detalle (-v) y detente en el primer fallo (-x)
+pytest -v -x tests/users/domain/
+
+
+
+--------------------------
+
+coverage run --source=app/users/domain -m pytest tests/users/domain/    
+
+coverage run --source=app/auth/domain -m pytest tests/auth/domain/
+
+
+
+coverage run --source=app/users/domain,app/auth/domain -m pytest tests/users/domain/ tests/auth/domain/ 
+
+
+coverage report
+coverage html

@@ -22,7 +22,7 @@ PATRÓN DE DISEÑO: Dependency Injection (Inyección de Dependencias)
 
 import uuid
 from typing import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 import bcrypt # <-- Añade esta importación al inicio del archiv
 
 # Importamos modelos y repositorios de dominio
@@ -173,7 +173,7 @@ def calculate_expires_at(hours: int = 1) -> datetime:
     Encapsula la lógica de cálculo de fechas.
     """
     from datetime import datetime, timedelta
-    return datetime.utcnow() + timedelta(hours=hours)
+    return datetime.now(timezone.utc) + timedelta(hours=hours)
 
 # --- Notas sobre la implementación ---
 # 1. Inyección de Dependencias: Recibe repositorios y funciones como parámetros.

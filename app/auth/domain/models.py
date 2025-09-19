@@ -1,7 +1,7 @@
 # DOMINIO
 import uuid
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 class Token:
     """ Representa un token de acceso en el dominio de autenticación.
@@ -24,7 +24,7 @@ class Token:
             raise ValueError("Todos los campos del token son obligatorios.")
         
         # Validación de fecha de expiración
-        if expires_at <= datetime.utcnow():
+        if expires_at <= datetime.now(timezone.utc):
             raise ValueError("La fecha de expiración debe ser futura.")
 
         # Asignación de atributos privados (encapsulamiento)
@@ -60,7 +60,7 @@ class Token:
         Verifica si el token ha expirado según la hora actual UTC.
         Regla de negocio: Comparación con tiempo actual para determinar validez.
         """
-        return datetime.utcnow() >= self._expires_at
+        return datetime.now(timezone.utc) >= self._expires_at
 
     def __eq__(self, other) -> bool:
         """
